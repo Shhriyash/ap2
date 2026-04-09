@@ -107,10 +107,21 @@ class OnboardingService:
         self.repo = PaymentRepository(db)
         self.store = store
 
-    def signup(self, full_name: str, email: str, phone: str | None) -> dict:
+    def signup(self, full_name: str, email: str, phone: str | None, password: str) -> dict:
         normalized_email = email.strip().lower()
+        from app.services.user_service import UserService
+
+        user_service = UserService(self.db)
         existing = self.repo.get_user_by_email(normalized_email)
         if existing:
+            if existing.password_hash:
+                expected = user_service._hash_password(existing.id, password)
+                if existing.password_hash != expected:
+                    raise PermissionError("Email is already registered with a different password.")
+            else:
+                user_service.set_user_password(user_id=existing.id, password=password)
+                self.db.commit()
+
             token = self.store.create_session(existing.id)
             return {
                 "user_id": existing.id,
@@ -125,6 +136,7 @@ class OnboardingService:
             phone=phone.strip() if phone else None,
         )
         self.repo.create_default_account(user.id)
+        user_service.set_user_password(user_id=user.id, password=password)
         self.db.commit()
         token = self.store.create_session(user.id)
         return {
@@ -139,6 +151,10 @@ class OnboardingService:
         if not user:
             raise LookupError("User not found.")
         self.store.set_pin(user_id=user_id, pin=pin)
+        from app.services.user_service import UserService
+
+        UserService(self.db).set_user_pin(user_id=user_id, pin=pin)
+        self.db.commit()
 
     def start_otp(self, user_id: str, destination: str) -> dict:
         user = self.repo.get_user_by_id(user_id)
@@ -164,7 +180,7 @@ class OnboardingService:
         user = self.repo.get_user_by_id(user_id)
         if not user:
             raise LookupError("User not found.")
-        email_verified = bool(user.supabase_user_id) or self.store.is_verified(user_id)
+        email_verified = self.store.is_verified(user_id)
         return {
             "user_id": user.id,
             "email": user.email,

@@ -1,3 +1,7 @@
+param(
+    [switch]$Reload
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -21,5 +25,9 @@ Get-Content $envFile | ForEach-Object {
 }
 
 Push-Location (Join-Path $root "gateway_service")
-& $venv -m uvicorn app.main:app --host $env:GATEWAY_HOST --port $env:GATEWAY_PORT --reload
+$uvicornArgs = @("-m", "uvicorn", "app.main:app", "--host", $env:GATEWAY_HOST, "--port", $env:GATEWAY_PORT)
+if ($Reload) {
+    $uvicornArgs += "--reload"
+}
+& $venv @uvicornArgs
 Pop-Location

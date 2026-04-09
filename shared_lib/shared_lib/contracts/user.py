@@ -12,6 +12,20 @@ class UserLoginResolveRequest(BaseModel):
     email: str = Field(..., min_length=3)
 
 
+class UserPinLoginRequest(BaseModel):
+    email: str = Field(..., min_length=3)
+    pin: str = Field(..., min_length=4, max_length=8)
+
+
+class UserPinVerifyRequest(BaseModel):
+    internal_user_id: str = Field(..., min_length=3)
+    pin: str = Field(..., min_length=4, max_length=8)
+
+
+class UserPinVerifyResponse(BaseModel):
+    verified: bool
+
+
 class UserIdentityResponse(BaseModel):
     internal_user_id: str
     supabase_user_id: str

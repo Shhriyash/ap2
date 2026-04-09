@@ -12,17 +12,17 @@ if (-not (Test-Path $agentScript)) {
 }
 
 Write-Host "Starting gateway service in a new PowerShell window..." -ForegroundColor Cyan
-$gatewayProc = Start-Process \
-    -FilePath "powershell.exe" \
-    -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", $gatewayScript) \
-    -WorkingDirectory $root \
+$gatewayProc = Start-Process `
+    -FilePath "powershell.exe" `
+    -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", $gatewayScript) `
+    -WorkingDirectory $root `
     -PassThru
 
 Write-Host "Starting agent service in a new PowerShell window..." -ForegroundColor Cyan
-$agentProc = Start-Process \
-    -FilePath "powershell.exe" \
-    -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", $agentScript) \
-    -WorkingDirectory $root \
+$agentProc = Start-Process `
+    -FilePath "powershell.exe" `
+    -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", $agentScript) `
+    -WorkingDirectory $root `
     -PassThru
 
 $statePath = Join-Path $root ".stack.pids.json"

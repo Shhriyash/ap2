@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+import os
+from pathlib import Path
 import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.settings import ModelSettings
 
+from app.core.agent_logger import log_event
 from app.core.config import settings
 from app.services.tool_router import PaymentToolRouter
 from shared_lib.contracts.payment import PaymentTransferRequest, PaymentTransferResponse
@@ -60,17 +64,34 @@ class PydanticPaymentAgentService:
         self._enabled = bool(settings.openrouter_api_key)
         self._tool_router = PaymentToolRouter()
         self._slot_agent: Agent[SlotExtractionDeps, IntentSlots] | None = None
+        self._slot_agent_fallback: Agent[SlotExtractionDeps, IntentSlots] | None = None
         self._execution_agent: Agent[PaymentExecutionDeps, ExecutionResult] | None = None
 
         if self._enabled:
+            # pydantic-ai OpenRouter provider expects OPENROUTER_API_KEY in environment.
+            if not os.getenv("OPENROUTER_API_KEY"):
+                os.environ["OPENROUTER_API_KEY"] = settings.openrouter_api_key
             instructions = _load_prompt_instructions()
+            slot_model = (settings.openrouter_slot_model or settings.openrouter_model).strip()
             self._slot_agent = Agent(
-                model=f"openrouter:{settings.openrouter_model}",
+                model=f"openrouter:{slot_model}",
                 deps_type=SlotExtractionDeps,
                 output_type=IntentSlots,
                 instructions=instructions,
+                model_settings=ModelSettings(max_tokens=settings.openrouter_slot_max_tokens),
             )
-            self._register_slot_tools()
+            self._register_slot_tools(self._slot_agent)
+
+            primary_model = settings.openrouter_model.strip()
+            if primary_model and primary_model != slot_model:
+                self._slot_agent_fallback = Agent(
+                    model=f"openrouter:{primary_model}",
+                    deps_type=SlotExtractionDeps,
+                    output_type=IntentSlots,
+                    instructions=instructions,
+                    model_settings=ModelSettings(max_tokens=settings.openrouter_slot_max_tokens),
+                )
+                self._register_slot_tools(self._slot_agent_fallback)
 
             self._execution_agent = Agent(
                 model=f"openrouter:{settings.openrouter_model}",
@@ -81,13 +102,12 @@ class PydanticPaymentAgentService:
                     "Call the pay_money tool exactly once with provided validated payload. "
                     "Then return executed=true and include transaction details."
                 ),
+                model_settings=ModelSettings(max_tokens=settings.openrouter_execution_max_tokens),
             )
             self._register_execution_tools()
 
-    def _register_slot_tools(self) -> None:
-        assert self._slot_agent is not None
-
-        @self._slot_agent.tool
+    def _register_slot_tools(self, slot_agent: Agent[SlotExtractionDeps, IntentSlots]) -> None:
+        @slot_agent.tool
         def match_beneficiary(ctx: RunContext[SlotExtractionDeps], beneficiary_name: str) -> str | None:
             for row in ctx.deps.beneficiaries:
                 if not row.get("verified"):
@@ -140,8 +160,52 @@ class PydanticPaymentAgentService:
             beneficiaries=beneficiaries,
             default_method_id=default_method_id,
         )
-        result = await self._slot_agent.run(message, deps=deps)
-        slots = result.output
+
+        last_error: Exception | None = None
+        try:
+            result = await self._slot_agent.run(message, deps=deps)
+            slots = result.output
+            log_event(
+                "slot_extraction_primary",
+                {
+                    "intent": slots.intent,
+                    "has_amount": slots.amount is not None,
+                    "has_receiver_hint": bool(slots.receiver_hint),
+                },
+            )
+        except Exception as exc:
+            last_error = exc
+            slots = None
+            log_event("slot_extraction_primary_error", {"error": str(exc)[:500]})
+
+        if (slots is None or self._slots_empty(slots)) and self._slot_agent_fallback is not None:
+            try:
+                retry_result = await self._slot_agent_fallback.run(message, deps=deps)
+                slots = retry_result.output
+                last_error = None
+                log_event(
+                    "slot_extraction_fallback",
+                    {
+                        "intent": slots.intent,
+                        "has_amount": slots.amount is not None,
+                        "has_receiver_hint": bool(slots.receiver_hint),
+                    },
+                )
+            except Exception as exc:
+                last_error = exc
+                log_event("slot_extraction_fallback_error", {"error": str(exc)[:500]})
+
+        if slots is None:
+            if last_error:
+                log_event("slot_extraction_return_unknown", {"reason": "all_models_failed"})
+                return self._fallback_slot_extraction(message, beneficiaries, default_method_id)
+            log_event("slot_extraction_return_unknown", {"reason": "no_slots_output"})
+            return self._fallback_slot_extraction(message, beneficiaries, default_method_id)
+
+        if self._slots_empty(slots):
+            log_event("slot_extraction_return_unknown", {"reason": "empty_slots"})
+            return self._fallback_slot_extraction(message, beneficiaries, default_method_id)
+
         if slots.payment_method_id is None:
             slots.payment_method_id = default_method_id
         return slots
@@ -212,87 +276,104 @@ class PydanticPaymentAgentService:
         beneficiaries: list[dict],
         default_method_id: str | None,
     ) -> IntentSlots:
-        lower = message.lower().strip()
-        amount: Decimal | None = None
-        receiver_hint = None
-        beneficiary_id = None
+        text = message.strip()
+        lower = text.lower()
 
-        amt_match = re.search(r"\b(\d+(?:\.\d{1,2})?)\b(?:\s*aed)?", lower)
-        if amt_match:
+        amount: Decimal | None = None
+        receiver_hint: str | None = None
+        purpose = ""
+        intent: Literal["send_money", "check_balance", "unknown"] = "unknown"
+
+        if self._is_balance_intent(lower):
+            intent = "check_balance"
+
+        email_match = re.search(r"([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})", text)
+        if email_match:
+            receiver_hint = self._sanitize_receiver_hint(email_match.group(1))
+
+        amount_match = re.search(
+            r"(?<!\w)(\d+(?:\.\d{1,2})?)\s*(?:aed|dhs?|dirham|dirhams)?\b",
+            lower,
+            flags=re.IGNORECASE,
+        )
+        if amount_match:
             try:
-                amount = Decimal(amt_match.group(1))
+                amount = Decimal(amount_match.group(1))
             except Exception:
                 amount = None
 
-        email_match = re.search(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", lower)
-        if email_match:
-            receiver_hint = email_match.group(0)
+        if not receiver_hint:
+            to_match = re.search(r"\bto\s+([^\s,!?;:]+)", text, flags=re.IGNORECASE)
+            if to_match:
+                receiver_hint = self._sanitize_receiver_hint(to_match.group(1))
 
-        recipient_patterns = [
-            r"\bto\s+([a-zA-Z][\w.-]*)",
-            r"\bfor\s+([a-zA-Z][\w.-]*)",
-            r"\binto\s+([a-zA-Z][\w.-]*)",
-            r"\bpay\s+([a-zA-Z][\w.-]*)",
-            r"\bsend\s+(?:money\s+)?(?:\d+(?:\.\d{1,2})?\s*(?:aed)?\s+)?to\s+([a-zA-Z][\w.-]*)",
-            r"\btransfer\s+(?:\d+(?:\.\d{1,2})?\s*(?:aed)?\s+)?to\s+([a-zA-Z][\w.-]*)",
-        ]
-        if receiver_hint is None:
-            for pattern in recipient_patterns:
-                m = re.search(pattern, lower)
-                if m:
-                    receiver_hint = m.group(1)
-                    break
+        note_match = re.search(r"\bnote\s*[:\-]\s*(.+)$", text, flags=re.IGNORECASE)
+        if note_match:
+            purpose = note_match.group(1).strip()
 
-        target_user_name = None
-        if "balance" in lower and "of " in lower:
-            target_user_name = lower.split("of ", 1)[1].split()[0]
-        elif "balance for " in lower:
-            target_user_name = lower.split("balance for ", 1)[1].split()[0]
-        if receiver_hint:
-            for row in beneficiaries:
-                if row.get("name", "").lower() == receiver_hint and row.get("verified"):
-                    beneficiary_id = row.get("beneficiary_id")
-                    break
+        if self._is_send_intent(lower) or receiver_hint or amount is not None:
+            intent = "send_money"
+
+        if intent == "check_balance":
+            amount = None
+            receiver_hint = None
+            purpose = ""
+
         return IntentSlots(
-            intent=_detect_intent(lower),
+            intent=intent,
             amount=amount,
             receiver_hint=receiver_hint,
-            beneficiary_id=beneficiary_id,
-            target_user_name=target_user_name,
+            purpose=purpose,
             payment_method_id=default_method_id,
         )
 
+    @staticmethod
+    def _slots_empty(slots: IntentSlots) -> bool:
+        return (
+            slots.intent == "unknown"
+            and slots.amount is None
+            and not slots.receiver_hint
+            and not slots.beneficiary_id
+            and not slots.target_user_id
+            and not slots.target_user_name
+            and not slots.purpose
+        )
 
-def _detect_intent(lower_text: str) -> str:
-    balance_markers = {
-        "balance",
-        "current balance",
-        "available balance",
-        "how much do i have",
-        "funds left",
-        "wallet balance",
-    }
-    payment_markers = {
-        "pay",
-        "send",
-        "transfer",
-        "remit",
-        "settle",
-        "give",
-        "move",
-        "wire",
-    }
+    @staticmethod
+    def _sanitize_receiver_hint(value: str) -> str:
+        return value.strip().strip(".,!?;:()[]{}<>\"'").lower()
 
-    if any(marker in lower_text for marker in balance_markers):
-        return "check_balance"
-    if any(marker in lower_text for marker in payment_markers):
-        return "send_money"
-    return "unknown"
+    @staticmethod
+    def _is_send_intent(lower_message: str) -> bool:
+        keywords = {
+            "send",
+            "pay",
+            "transfer",
+            "remit",
+            "give",
+            "move money",
+            "send money",
+            "make payment",
+        }
+        return any(token in lower_message for token in keywords)
+
+    @staticmethod
+    def _is_balance_intent(lower_message: str) -> bool:
+        keywords = {
+            "balance",
+            "available balance",
+            "how much do i have",
+            "funds left",
+            "wallet amount",
+            "account balance",
+        }
+        return any(token in lower_message for token in keywords)
 
 
 def _load_prompt_instructions() -> str:
     try:
-        with open("prompts/payment_agent_prompt.txt", "r", encoding="utf-8") as f:
+        prompt_path = Path(__file__).resolve().parents[2] / "prompts" / "payment_agent_prompt.txt"
+        with prompt_path.open("r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return (

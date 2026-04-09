@@ -17,6 +17,7 @@ venv/
 .env
 .env.*
 !.env.agent.example
+!.env.gateway.example
 env/
 ENV/
 .envrc
@@ -24,6 +25,33 @@ ENV/
 # Local planning notes
 PLAN.md
 plan.md
+
+# Runtime artifacts
+logs/
+*.log
+*.pid
+*.pid.lock
+.stack.pids.json
+.agent_session.json
+*agent_session*.json
+*session_store*.json
+
+# Local stack/source artifacts
+source.txt
+SOURCES.txt
+*.stack
+*.stacktrace
+
+# Build metadata
+*.egg-info/
+
+# Secret files
+secrets/
+secret.*
+*.secret
+*.secrets
+*.key
+*.pem
 
 # IDE
 .idea/

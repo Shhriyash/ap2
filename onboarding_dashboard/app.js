@@ -96,14 +96,27 @@ const goToStep = (stepNumber) => {
 const handleSignup = async (event) => {
   event.preventDefault();
   const formData = new FormData(elements.signupForm);
+  const password = String(formData.get("password") || "").trim();
+  const confirmPassword = String(formData.get("confirm_password") || "").trim();
   const payload = {
     full_name: String(formData.get("full_name") || "").trim(),
     email: String(formData.get("email") || "").trim().toLowerCase(),
+    password,
     phone: String(formData.get("phone") || "").trim(),
   };
 
-  if (!payload.full_name || !payload.email) {
-    setMessage(elements.signupMessage, "error", "Full name and email are required.");
+  if (!payload.full_name || !payload.email || !payload.password) {
+    setMessage(elements.signupMessage, "error", "Full name, email, and password are required.");
+    return;
+  }
+
+  if (payload.password.length < 6) {
+    setMessage(elements.signupMessage, "error", "Password must be at least 6 characters.");
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    setMessage(elements.signupMessage, "error", "Password and confirm password do not match.");
     return;
   }
 

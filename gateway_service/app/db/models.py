@@ -37,6 +37,8 @@ class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     supabase_user_id: Mapped[Optional[str]] = mapped_column(String(128), unique=True, index=True, nullable=True)
+    pin_hash: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     full_name: Mapped[str] = mapped_column(String(150))
     phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)

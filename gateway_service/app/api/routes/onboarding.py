@@ -13,6 +13,7 @@ router = APIRouter(tags=["onboarding"])
 class SignupRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=150)
     email: str = Field(..., min_length=3, max_length=200)
+    password: str = Field(..., min_length=6, max_length=120)
     phone: str | None = Field(default=None, max_length=30)
 
 
@@ -65,11 +66,15 @@ def signup(
     payload: SignupRequest,
     db: Session = Depends(get_db),
 ) -> SignupResponse:
-    data = OnboardingService(db, onboarding_store).signup(
-        full_name=payload.full_name,
-        email=payload.email,
-        phone=payload.phone,
-    )
+    try:
+        data = OnboardingService(db, onboarding_store).signup(
+            full_name=payload.full_name,
+            email=payload.email,
+            phone=payload.phone,
+            password=payload.password,
+        )
+    except (PermissionError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return SignupResponse(**data)
 
 

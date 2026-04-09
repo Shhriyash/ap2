@@ -9,6 +9,9 @@ class Settings(BaseSettings):
 
     # Preferred key for this project.
     supabase_database_url: str = ""
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_service_role_key: str = ""
     # Backward-compatible fallback key.
     database_url: str = ""
     internal_service_token: str = ""

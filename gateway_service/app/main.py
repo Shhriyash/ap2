@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.api.routes.auth_context import router as auth_context_router
 from app.api.routes.health import router as health_router
@@ -13,7 +14,7 @@ from app.core.config import settings
 from app.core.gateway_logger import log_event
 from app.core.request_context import set_correlation_id
 from app.db.models import Base
-from app.db.session import engine
+from app.db.session import SessionLocal, engine
 
 app = FastAPI(title=settings.gateway_service_name)
 app.add_middleware(
@@ -54,3 +55,7 @@ async def correlation_middleware(request: Request, call_next):
 def startup() -> None:
     # Prototype convenience. In production use managed migrations.
     Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_hash TEXT"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT"))
+        db.commit()

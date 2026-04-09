@@ -20,7 +20,14 @@ from shared_lib.contracts.payment import (
     VerifyReceiverRequest,
     VerifyReceiverResponse,
 )
-from shared_lib.contracts.user import UserIdentityResponse, UserLoginResolveRequest, UserProvisionRequest
+from shared_lib.contracts.user import (
+    UserIdentityResponse,
+    UserLoginResolveRequest,
+    UserPinLoginRequest,
+    UserPinVerifyRequest,
+    UserPinVerifyResponse,
+    UserProvisionRequest,
+)
 
 __all__ = [
     "AgentMessageRequest",
@@ -44,5 +51,8 @@ __all__ = [
     "VerifyReceiverResponse",
     "UserIdentityResponse",
     "UserLoginResolveRequest",
+    "UserPinLoginRequest",
+    "UserPinVerifyRequest",
+    "UserPinVerifyResponse",
     "UserProvisionRequest",
 ]

@@ -1,6 +1,0 @@
-Metadata-Version: 2.4
-Name: shared-lib-agent-payments
-Version: 0.1.0
-Summary: Shared contracts and utilities for AI agent payment prototype
-Requires-Python: >=3.11
-Requires-Dist: pydantic>=2.8.0

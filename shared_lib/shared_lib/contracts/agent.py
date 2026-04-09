@@ -34,7 +34,7 @@ class AuthChallengeVerifyRequest(BaseModel):
 
 class CliLoginRequest(BaseModel):
     email: str = Field(..., min_length=3)
-    password: str = Field(..., min_length=1)
+    pin: str = Field(..., min_length=4, max_length=8)
 
 
 class CliLoginResponse(BaseModel):

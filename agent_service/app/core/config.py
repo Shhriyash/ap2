@@ -9,6 +9,9 @@ class Settings(BaseSettings):
 
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-4.1-mini"
+    openrouter_slot_model: str = "openai/gpt-4.1-mini"
+    openrouter_slot_max_tokens: int = 1200
+    openrouter_execution_max_tokens: int = 800
     supabase_url: str = ""
     supabase_anon_key: str = ""
 
@@ -17,6 +20,7 @@ class Settings(BaseSettings):
     internal_service_token: str = ""
     default_currency: str = "AED"
     agent_session_ttl_minutes: int = 240
+    agent_session_store_path: str = ""
 
     max_pin_attempts: int = 3
     max_otp_attempts: int = 3

@@ -36,7 +36,7 @@ def _get_principal(credentials: HTTPAuthorizationCredentials = Depends(security)
 @router.post("/auth/cli/login", response_model=CliLoginResponse)
 async def cli_login(payload: CliLoginRequest) -> CliLoginResponse:
     try:
-        principal = await auth_service.cli_login(email=payload.email, password=payload.password)
+        principal = await auth_service.cli_login(email=payload.email, pin=payload.pin)
     except PermissionError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -74,7 +74,7 @@ async def auth_challenge_verify(
     payload: AuthChallengeVerifyRequest,
     principal: SessionPrincipal = Depends(_get_principal),
 ) -> AuthChallengeVerifyResponse:
-    return orchestrator.verify_auth_challenge(payload.challenge_id, principal.internal_user_id, payload.value)
+    return await orchestrator.verify_auth_challenge(payload.challenge_id, principal.internal_user_id, payload.value)
 
 
 @router.post("/agent/confirm", response_model=AgentMessageResponse)

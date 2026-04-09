@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from app.core.agent_logger import log_event
 from app.core.config import settings
+from app.services.auth_service import auth_service
 from app.services.pydantic_payment_agent import (
     PaymentExecutionInput,
     PydanticPaymentAgentService,
@@ -14,6 +15,7 @@ from app.services.pydantic_payment_agent import (
 from app.services.retrieval import RetrievalService
 from shared_lib.contracts.agent import AgentMessageResponse, AuthChallengeVerifyResponse
 from shared_lib.core.idempotency import make_idempotency_key
+import re
 
 
 @dataclass
@@ -86,23 +88,20 @@ class AgentOrchestrator:
                 self._clear_receiver(state)
                 return AgentMessageResponse(
                     session_id=session_id,
-                    response="Receiver not confirmed. Please provide the receiver name again.",
+                    response="No problem. Share the receiver email and I will verify it again.",
                     next_action="ask_slot",
                     state=state.to_dict(),
                 )
             else:
                 return AgentMessageResponse(
                     session_id=session_id,
-                    response="Please confirm receiver with yes or no.",
+                    response="Please reply with yes or no so I can proceed safely.",
                     next_action="ask_slot",
                     state=state.to_dict(),
                 )
 
         if state.awaiting_note:
-            if lower in {"no", "no note", "none", "skip"}:
-                state.purpose = ""
-            else:
-                state.purpose = message.strip()
+            state.purpose = self._normalize_note_input(message)
             state.awaiting_note = False
             state.note_collected = True
 
@@ -138,7 +137,15 @@ class AgentOrchestrator:
                     state=state.to_dict(),
                 )
 
-            balance = await self._agent.get_balance(requestor_user_id=user_id, target_user_id=user_id)
+            try:
+                balance = await self._agent.get_balance(requestor_user_id=user_id, target_user_id=user_id)
+            except Exception:
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response="I couldn't fetch your balance right now. Please try again in a moment.",
+                    next_action="failed",
+                    state=state.to_dict(),
+                )
             log_event(
                 "balance_returned",
                 {
@@ -166,9 +173,33 @@ class AgentOrchestrator:
             and not state.beneficiary_name
             and not state.beneficiary_id
         ):
+            if self._is_greeting(lower) or self._is_small_talk(lower):
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response=(
+                        "Hi. I can help with money transfer and balance checks. "
+                        "Example: send 50 AED to friend@example.com."
+                    ),
+                    next_action="ask_slot",
+                    state=state.to_dict(),
+                )
+
+            if self._is_help_request(lower):
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response=(
+                        "I can send money, check your balance, and cancel a pending payment. "
+                        "Example: send 120 AED to friend@example.com."
+                    ),
+                    next_action="ask_slot",
+                    state=state.to_dict(),
+                )
+
             return AgentMessageResponse(
                 session_id=session_id,
-                response="I can help with payments. Please say: send <amount> AED to <receiver email>.",
+                response=(
+                    "I can help with transfer or balance. Try: send 50 AED to friend@example.com."
+                ),
                 next_action="ask_slot",
                 state=state.to_dict(),
             )
@@ -192,9 +223,27 @@ class AgentOrchestrator:
         if not state.receiver_confirmed:
             receiver_hint = state.beneficiary_name or state.beneficiary_id
             if not receiver_hint:
+                amount_hint = ""
+                if state.amount is None:
+                    amount_hint = " and the amount in AED"
                 return AgentMessageResponse(
                     session_id=session_id,
-                    response="Please provide the receiver email.",
+                    response=(
+                        "Sure, I can do that. Please share the receiver email"
+                        f"{amount_hint}. Example: send 50 AED to name@example.com."
+                    ),
+                    next_action="ask_slot",
+                    state=state.to_dict(),
+                )
+
+            if not self._looks_like_email(receiver_hint):
+                self._clear_receiver(state)
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response=(
+                        "I can help with that. Please provide the receiver email in this format: "
+                        "name@example.com."
+                    ),
                     next_action="ask_slot",
                     state=state.to_dict(),
                 )
@@ -204,7 +253,7 @@ class AgentOrchestrator:
                 self._clear_receiver(state)
                 return AgentMessageResponse(
                     session_id=session_id,
-                    response="Receiver email was not found as an active user. Please provide a valid email.",
+                    response="I could not find an active user for that email. Please share another receiver email.",
                     next_action="ask_slot",
                     state=state.to_dict(),
                 )
@@ -243,7 +292,7 @@ class AgentOrchestrator:
         if state.amount is None:
             return AgentMessageResponse(
                 session_id=session_id,
-                response="Please provide the amount in AED.",
+                response="What amount should I send (in AED)?",
                 next_action="ask_slot",
                 state=state.to_dict(),
             )
@@ -251,7 +300,7 @@ class AgentOrchestrator:
             state.awaiting_note = True
             return AgentMessageResponse(
                 session_id=session_id,
-                response="Any additional note? Reply with note text or say no note.",
+                response="Any note to add? (optional)",
                 next_action="ask_slot",
                 state=state.to_dict(),
             )
@@ -265,7 +314,7 @@ class AgentOrchestrator:
         if not state.auth_verified:
             return AgentMessageResponse(
                 session_id=session_id,
-                response="Authentication required. Start PIN verification.",
+                response="Please verify with your PIN to continue.",
                 next_action="auth_challenge",
                 state=state.to_dict(),
             )
@@ -302,7 +351,7 @@ class AgentOrchestrator:
         }
         return {"challenge_id": challenge_id, "challenge_type": challenge_type}
 
-    def verify_auth_challenge(self, challenge_id: str, user_id: str, value: str) -> AuthChallengeVerifyResponse:
+    async def verify_auth_challenge(self, challenge_id: str, user_id: str, value: str) -> AuthChallengeVerifyResponse:
         challenge = self._auth_challenges.get(challenge_id)
         if not challenge or challenge["user_id"] != user_id:
             return AuthChallengeVerifyResponse(
@@ -315,8 +364,18 @@ class AgentOrchestrator:
         challenge["attempts"] += 1
 
         if challenge["challenge_type"] == "pin":
-            # Prototype static PIN. Replace with hashed PIN verifier from DB.
-            if value == "1234":
+            try:
+                pin_verified = await auth_service.verify_transaction_pin(internal_user_id=user_id, pin=value)
+            except Exception:
+                return AuthChallengeVerifyResponse(
+                    challenge_id=challenge_id,
+                    verified=False,
+                    challenge_type="pin",
+                    next_step="retry",
+                    message="PIN verification service is temporarily unavailable. Please retry.",
+                )
+
+            if pin_verified:
                 challenge["verified"] = True
                 self._mark_session_auth_verified(challenge["session_id"], challenge_id)
                 return AuthChallengeVerifyResponse(
@@ -327,10 +386,12 @@ class AgentOrchestrator:
                     message="PIN verified.",
                 )
             if challenge["attempts"] >= settings.max_pin_attempts:
+                challenge["challenge_type"] = "otp"
+                challenge["attempts"] = 0
                 return AuthChallengeVerifyResponse(
                     challenge_id=challenge_id,
                     verified=False,
-                    challenge_type="pin",
+                    challenge_type="otp",
                     next_step="otp_fallback",
                     message="PIN failed. Switch to OTP.",
                 )
@@ -481,6 +542,47 @@ class AgentOrchestrator:
         return lower_message in {"no", "n", "wrong", "change"}
 
     @staticmethod
+    def _is_greeting(lower_message: str) -> bool:
+        return any(
+            token in lower_message
+            for token in {
+                "hi",
+                "hii",
+                "hello",
+                "hey",
+                "good morning",
+                "good afternoon",
+                "good evening",
+            }
+        )
+
+    @staticmethod
+    def _is_small_talk(lower_message: str) -> bool:
+        return any(
+            token in lower_message
+            for token in {
+                "how are you",
+                "how are u",
+                "what's up",
+                "whats up",
+                "how is it going",
+            }
+        )
+
+    @staticmethod
+    def _is_help_request(lower_message: str) -> bool:
+        return any(
+            token in lower_message
+            for token in {
+                "help",
+                "what can you do",
+                "what do you do",
+                "assist",
+                "capabilities",
+            }
+        )
+
+    @staticmethod
     def _clear_receiver(state: SessionState) -> None:
         state.beneficiary_id = None
         state.beneficiary_name = None
@@ -497,6 +599,19 @@ class AgentOrchestrator:
         state.auth_verified = False
         state.auth_context_id = None
         self._clear_receiver(state)
+
+    @staticmethod
+    def _looks_like_email(value: str) -> bool:
+        return bool(re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", value.strip()))
+
+    @staticmethod
+    def _normalize_note_input(raw_note: str) -> str:
+        raw = raw_note.strip()
+        if raw.lower() in {"no", "no note", "none", "skip", "n/a", "na"}:
+            return ""
+        normalized = re.sub(r"^\s*(?:add\s+)?note\s*[:\-]\s*", "", raw, flags=re.IGNORECASE)
+        normalized = re.sub(r"^\s*note\s+(?:is|as)\s+", "", normalized, flags=re.IGNORECASE)
+        return normalized.strip()
 
     def get_session_state(self, session_id: str) -> dict[str, Any]:
         state = self._sessions.get(session_id)

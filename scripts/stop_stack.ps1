@@ -14,12 +14,12 @@ $pids = @()
 if ($state.gateway_pid) { $pids += [int]$state.gateway_pid }
 if ($state.agent_pid) { $pids += [int]$state.agent_pid }
 
-foreach ($pid in $pids) {
+foreach ($procId in $pids) {
     try {
-        Stop-Process -Id $pid -Force -ErrorAction Stop
-        Write-Host "Stopped process PID $pid" -ForegroundColor Yellow
+        Stop-Process -Id $procId -Force -ErrorAction Stop
+        Write-Host "Stopped process PID $procId" -ForegroundColor Yellow
     } catch {
-        Write-Warning "Could not stop PID $pid (it may already be closed)."
+        Write-Warning "Could not stop PID $procId (it may already be closed)."
     }
 }
 
