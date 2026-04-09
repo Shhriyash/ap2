@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+.venv-agent/
+.venv-gateway/
+venv/
+
+# Env files
+.env
+.env.*
+!.env.agent.example
+!.env.gateway.example
+env/
+ENV/
+.envrc
+
+# Local planning notes
+PLAN.md
+plan.md
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shared-lib-agent-payments"
+version = "0.1.0"
+description = "Shared contracts and utilities for AI agent payment prototype"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.8.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared_lib*"]
