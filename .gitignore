@@ -17,7 +17,6 @@ venv/
 .env
 .env.*
 !.env.agent.example
-!.env.gateway.example
 env/
 ENV/
 .envrc

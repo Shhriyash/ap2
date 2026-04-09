@@ -36,6 +36,7 @@ class TransactionStatus(str, enum.Enum):
 class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    supabase_user_id: Mapped[Optional[str]] = mapped_column(String(128), unique=True, index=True, nullable=True)
     full_name: Mapped[str] = mapped_column(String(150))
     phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
@@ -70,6 +71,8 @@ class Transaction(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     payer_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    session_id: Mapped[str] = mapped_column(String(64), index=True)
+    auth_context_id: Mapped[str] = mapped_column(String(64), index=True)
     beneficiary_id: Mapped[str] = mapped_column(ForeignKey("beneficiaries.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     currency: Mapped[str] = mapped_column(String(3), default="AED")

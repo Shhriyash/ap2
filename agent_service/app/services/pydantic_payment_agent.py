@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -10,6 +11,7 @@ from pydantic_ai import Agent, RunContext
 from app.core.config import settings
 from app.services.tool_router import PaymentToolRouter
 from shared_lib.contracts.payment import PaymentTransferRequest, PaymentTransferResponse
+from shared_lib.contracts.payment import VerifyReceiverResponse
 
 
 @dataclass
@@ -25,10 +27,12 @@ class PaymentExecutionDeps:
 
 
 class IntentSlots(BaseModel):
-    intent: Literal["send_money", "unknown"]
+    intent: Literal["send_money", "check_balance", "unknown"]
     amount: Decimal | None = None
-    beneficiary_name: str | None = None
+    receiver_hint: str | None = None
     beneficiary_id: str | None = None
+    target_user_id: str | None = None
+    target_user_name: str | None = None
     purpose: str = ""
     payment_method_id: str | None = None
 
@@ -42,6 +46,7 @@ class ExecutionResult(BaseModel):
 
 class PaymentExecutionInput(BaseModel):
     payer_user_id: str
+    session_id: str
     beneficiary_id: str
     amount: Decimal = Field(..., gt=Decimal("0"))
     payment_method_id: str
@@ -58,15 +63,12 @@ class PydanticPaymentAgentService:
         self._execution_agent: Agent[PaymentExecutionDeps, ExecutionResult] | None = None
 
         if self._enabled:
+            instructions = _load_prompt_instructions()
             self._slot_agent = Agent(
                 model=f"openrouter:{settings.openrouter_model}",
                 deps_type=SlotExtractionDeps,
                 output_type=IntentSlots,
-                instructions=(
-                    "Extract payment intent from user text. "
-                    "If intent is payment, fill amount, beneficiary_name, optional purpose. "
-                    "Use match_beneficiary tool when beneficiary_name is present."
-                ),
+                instructions=instructions,
             )
             self._register_slot_tools()
 
@@ -101,6 +103,7 @@ class PydanticPaymentAgentService:
         async def pay_money(
             ctx: RunContext[PaymentExecutionDeps],
             payer_user_id: str,
+            session_id: str,
             beneficiary_id: str,
             amount: Decimal,
             payment_method_id: str,
@@ -110,6 +113,7 @@ class PydanticPaymentAgentService:
         ) -> dict:
             payload = PaymentTransferRequest(
                 payer_user_id=payer_user_id,
+                session_id=session_id,
                 beneficiary_id=beneficiary_id,
                 amount=amount,
                 currency="AED",
@@ -147,6 +151,7 @@ class PydanticPaymentAgentService:
             return await self._tool_router.transfer(
                 PaymentTransferRequest(
                     payer_user_id=payload.payer_user_id,
+                    session_id=payload.session_id,
                     beneficiary_id=payload.beneficiary_id,
                     amount=payload.amount,
                     currency="AED",
@@ -177,6 +182,7 @@ class PydanticPaymentAgentService:
         return await self._tool_router.transfer(
             PaymentTransferRequest(
                 payer_user_id=payload.payer_user_id,
+                session_id=payload.session_id,
                 beneficiary_id=payload.beneficiary_id,
                 amount=payload.amount,
                 currency="AED",
@@ -187,34 +193,109 @@ class PydanticPaymentAgentService:
             )
         )
 
+    async def get_balance(self, requestor_user_id: str, target_user_id: str):
+        return await self._tool_router.get_balance(requestor_user_id=requestor_user_id, target_user_id=target_user_id)
+
+    async def verify_receiver(self, sender_user_id: str, receiver_hint: str) -> VerifyReceiverResponse:
+        return await self._tool_router.verify_receiver(sender_user_id=sender_user_id, receiver_hint=receiver_hint)
+
+    async def register_auth_context(self, auth_context_id: str, user_id: str, session_id: str) -> None:
+        await self._tool_router.register_auth_context(
+            auth_context_id=auth_context_id,
+            user_id=user_id,
+            session_id=session_id,
+        )
+
     def _fallback_slot_extraction(
         self,
         message: str,
         beneficiaries: list[dict],
         default_method_id: str | None,
     ) -> IntentSlots:
-        lower = message.lower()
+        lower = message.lower().strip()
         amount: Decimal | None = None
-        beneficiary_name = None
+        receiver_hint = None
         beneficiary_id = None
-        tokens = lower.split()
-        for token in tokens:
+
+        amt_match = re.search(r"\b(\d+(?:\.\d{1,2})?)\b(?:\s*aed)?", lower)
+        if amt_match:
             try:
-                amount = Decimal(token)
-                break
+                amount = Decimal(amt_match.group(1))
             except Exception:
-                continue
-        if " to " in lower:
-            beneficiary_name = lower.split(" to ", 1)[1].split()[0]
-        if beneficiary_name:
+                amount = None
+
+        email_match = re.search(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", lower)
+        if email_match:
+            receiver_hint = email_match.group(0)
+
+        recipient_patterns = [
+            r"\bto\s+([a-zA-Z][\w.-]*)",
+            r"\bfor\s+([a-zA-Z][\w.-]*)",
+            r"\binto\s+([a-zA-Z][\w.-]*)",
+            r"\bpay\s+([a-zA-Z][\w.-]*)",
+            r"\bsend\s+(?:money\s+)?(?:\d+(?:\.\d{1,2})?\s*(?:aed)?\s+)?to\s+([a-zA-Z][\w.-]*)",
+            r"\btransfer\s+(?:\d+(?:\.\d{1,2})?\s*(?:aed)?\s+)?to\s+([a-zA-Z][\w.-]*)",
+        ]
+        if receiver_hint is None:
+            for pattern in recipient_patterns:
+                m = re.search(pattern, lower)
+                if m:
+                    receiver_hint = m.group(1)
+                    break
+
+        target_user_name = None
+        if "balance" in lower and "of " in lower:
+            target_user_name = lower.split("of ", 1)[1].split()[0]
+        elif "balance for " in lower:
+            target_user_name = lower.split("balance for ", 1)[1].split()[0]
+        if receiver_hint:
             for row in beneficiaries:
-                if row.get("name", "").lower() == beneficiary_name and row.get("verified"):
+                if row.get("name", "").lower() == receiver_hint and row.get("verified"):
                     beneficiary_id = row.get("beneficiary_id")
                     break
         return IntentSlots(
-            intent="send_money" if "pay" in lower else "unknown",
+            intent=_detect_intent(lower),
             amount=amount,
-            beneficiary_name=beneficiary_name,
+            receiver_hint=receiver_hint,
             beneficiary_id=beneficiary_id,
+            target_user_name=target_user_name,
             payment_method_id=default_method_id,
+        )
+
+
+def _detect_intent(lower_text: str) -> str:
+    balance_markers = {
+        "balance",
+        "current balance",
+        "available balance",
+        "how much do i have",
+        "funds left",
+        "wallet balance",
+    }
+    payment_markers = {
+        "pay",
+        "send",
+        "transfer",
+        "remit",
+        "settle",
+        "give",
+        "move",
+        "wire",
+    }
+
+    if any(marker in lower_text for marker in balance_markers):
+        return "check_balance"
+    if any(marker in lower_text for marker in payment_markers):
+        return "send_money"
+    return "unknown"
+
+
+def _load_prompt_instructions() -> str:
+    try:
+        with open("prompts/payment_agent_prompt.txt", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return (
+            "Detect intent send_money/check_balance and extract slots. "
+            "Enforce no cross-account balance disclosure."
         )

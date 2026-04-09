@@ -2,6 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
+    supabase_user_id TEXT UNIQUE,
     full_name TEXT NOT NULL,
     phone TEXT,
     email TEXT,
@@ -39,6 +40,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     id TEXT PRIMARY KEY,
     idempotency_key TEXT NOT NULL UNIQUE,
     payer_user_id TEXT NOT NULL REFERENCES users(id),
+    session_id TEXT NOT NULL,
+    auth_context_id TEXT NOT NULL,
     beneficiary_id TEXT NOT NULL REFERENCES beneficiaries(id),
     amount NUMERIC(18,2) NOT NULL,
     currency CHAR(3) NOT NULL DEFAULT 'AED',
@@ -66,10 +69,10 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
 );
 
 -- Seed prototype users and balances.
-INSERT INTO users (id, full_name, phone, email)
+INSERT INTO users (id, supabase_user_id, full_name, phone, email)
 VALUES
-    ('user_x', 'User X', '+971500000001', 'x@example.com'),
-    ('user_y', 'User Y', '+971500000002', 'y@example.com')
+    ('user_x', 'sb_user_x', 'User X', '+971500000001', 'x@example.com'),
+    ('user_y', 'sb_user_y', 'User Y', '+971500000002', 'y@example.com')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO accounts (id, user_id, currency, available_balance, held_balance, status)

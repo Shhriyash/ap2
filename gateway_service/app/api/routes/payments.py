@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api.security import require_internal_service_token
 from app.db.session import get_db
 from app.services.payment_service import PaymentService
 from shared_lib.contracts.payment import (
+    BalanceResponse,
     PaymentTransferRequest,
     PaymentTransferResponse,
     PaymentValidateRequest,
@@ -11,9 +13,11 @@ from shared_lib.contracts.payment import (
     RefundRequest,
     ReversalRequest,
     TransactionStatusResponse,
+    VerifyReceiverRequest,
+    VerifyReceiverResponse,
 )
 
-router = APIRouter(tags=["payments"])
+router = APIRouter(tags=["payments"], dependencies=[Depends(require_internal_service_token)])
 
 
 @router.post("/payments/validate", response_model=PaymentValidateResponse)
@@ -54,3 +58,25 @@ def reverse_payment(
     db: Session = Depends(get_db),
 ) -> PaymentTransferResponse:
     return PaymentService(db).reverse(payload)
+
+
+@router.get("/accounts/{target_user_id}/balance", response_model=BalanceResponse)
+def get_balance(
+    target_user_id: str,
+    requestor_user_id: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+) -> BalanceResponse:
+    try:
+        return PaymentService(db).get_balance(requestor_user_id, target_user_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/receivers/verify", response_model=VerifyReceiverResponse)
+def verify_receiver(
+    payload: VerifyReceiverRequest,
+    db: Session = Depends(get_db),
+) -> VerifyReceiverResponse:
+    return PaymentService(db).verify_receiver(payload)

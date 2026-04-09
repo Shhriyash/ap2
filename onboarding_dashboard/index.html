@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent2Pay | Landing</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
+    <div class="bg-orb bg-orb-a" aria-hidden="true"></div>
+    <div class="bg-orb bg-orb-b" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-pill" aria-hidden="true"></span>
+        <span class="brand-text">Agent2Pay</span>
+      </div>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="./signup.html">Signup</a>
+        <a href="./agent-logs.html">Agent Logs</a>
+      </nav>
+    </header>
+
+    <main id="main-content">
+      <section class="landing-hero reveal" aria-label="Welcome">
+        <div class="landing-hero-copy">
+          <p class="eyebrow">Secure Payment Onboarding Platform</p>
+          <h1>Welcome to Agent2Pay</h1>
+          <p class="hero-sub">
+            A product-grade onboarding experience for payment assistant users with signup, PIN setup, OTP verification,
+            and operational visibility in one cohesive flow.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="./signup.html">Signup</a>
+            <a class="btn btn-secondary" href="#features">Features</a>
+          </div>
+          <div class="hero-trust" aria-label="Platform highlights">
+            <span>Fast onboarding</span>
+            <span>Verification-first</span>
+            <span>Live agent logs</span>
+          </div>
+        </div>
+
+        <div class="landing-product-shell" aria-label="Product Preview">
+          <div class="product-topbar">
+            <span class="dot dot-red" aria-hidden="true"></span>
+            <span class="dot dot-amber" aria-hidden="true"></span>
+            <span class="dot dot-green" aria-hidden="true"></span>
+            <p>Agent2Pay Console Preview</p>
+          </div>
+          <div class="product-body">
+            <aside class="product-nav">
+              <span class="nav-chip active">Onboarding</span>
+              <span class="nav-chip">Users</span>
+              <span class="nav-chip">Sessions</span>
+              <span class="nav-chip">Logs</span>
+            </aside>
+            <div class="product-panel">
+              <div class="panel-block">
+                <p class="panel-title">Signup Progress</p>
+                <div class="progress-track" aria-hidden="true"><span></span></div>
+                <p class="panel-foot">Step 3 of 4 completed</p>
+              </div>
+              <div class="panel-grid">
+                <div class="panel-kpi">
+                  <p class="kpi-label">Today signups</p>
+                  <p class="kpi-value">128</p>
+                </div>
+                <div class="panel-kpi">
+                  <p class="kpi-label">OTP success</p>
+                  <p class="kpi-value">96.4%</p>
+                </div>
+              </div>
+              <div class="panel-block">
+                <p class="panel-title">Latest Event</p>
+                <p class="event-row"><strong>user_x</strong> completed verification and moved to CLI auth.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stats-band reveal" aria-label="Product stats">
+        <article>
+          <p class="stat-num">4</p>
+          <p class="stat-txt">structured onboarding steps</p>
+        </article>
+        <article>
+          <p class="stat-num">2</p>
+          <p class="stat-txt">dedicated product surfaces</p>
+        </article>
+        <article>
+          <p class="stat-num">1</p>
+          <p class="stat-txt">single-click move to signup</p>
+        </article>
+      </section>
+
+      <section id="features" class="features-section reveal" aria-label="Product Features">
+        <div class="features-head">
+          <p class="eyebrow">Core Capabilities</p>
+          <h2>Built Like a Product, Not a Prototype Screen</h2>
+        </div>
+
+        <div class="feature-showcase">
+          <article class="showcase-card">
+            <div class="showcase-copy">
+              <h3>Guided onboarding journey</h3>
+              <p>Clear, stepwise progression from user details to PIN and OTP completion with contextual feedback.</p>
+              <ul>
+                <li>Explicit step states</li>
+                <li>Inline validation and recovery</li>
+                <li>Completion summary for next action</li>
+              </ul>
+            </div>
+            <div class="showcase-visual">
+              <div class="visual-shell visual-flow">
+                <span>Details</span>
+                <span>PIN</span>
+                <span>OTP</span>
+                <span>Complete</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="showcase-card reverse">
+            <div class="showcase-copy">
+              <h3>Operational visibility surface</h3>
+              <p>A separate live logs page allows agent-session tracking without overloading onboarding UX.</p>
+              <ul>
+                <li>Session-based tracking</li>
+                <li>Live refresh cycle</li>
+                <li>Clear start-stop controls</li>
+              </ul>
+            </div>
+            <div class="showcase-visual">
+              <div class="visual-shell visual-log">
+                <p>sess_1924 · state changed</p>
+                <p>sess_1924 · auth verified</p>
+                <p>sess_1924 · ready_to_execute</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="workflow-section reveal" aria-label="Workflow">
+        <div class="features-head">
+          <p class="eyebrow">How It Works</p>
+          <h2>From landing to verification in minutes</h2>
+        </div>
+        <ol class="workflow-list">
+          <li>
+            <h3>Open Signup</h3>
+            <p>Start from the primary CTA and move into the dedicated signup page.</p>
+          </li>
+          <li>
+            <h3>Complete secure setup</h3>
+            <p>Register details, set PIN, and verify OTP channel in a guided form sequence.</p>
+          </li>
+          <li>
+            <h3>Monitor agent status</h3>
+            <p>Use the separate agent logs page to watch session updates in real time.</p>
+          </li>
+        </ol>
+      </section>
+    </main>
+
+    <script type="module" src="./landing.js"></script>
+  </body>
+</html>

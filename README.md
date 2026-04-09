@@ -1,46 +1,217 @@
 # AI Agent Payments Prototype Scaffold
 
-This repository contains a split-service prototype for an AI voice/text payment agent:
+This repo is a split-service prototype for an AI payment assistant:
 
-- `agent_service`: `pydantic-ai` orchestration, retrieval/slot flow, tool execution.
-- `gateway_service`: payment gateway simulation with pluggable provider adapters.
-- `shared_lib`: reusable contracts/utilities shared by both services.
+- `agent_service`: conversation orchestration, slot extraction, receiver verification flow, and payment execution control.
+- `gateway_service`: payment/balance backend (dummy processor for prototype).
+- `shared_lib`: shared Pydantic contracts and common utilities used by both services.
 
-Designed for future backend replacement:
+## Documentation
 
-- Keep Agent + API contracts stable.
-- Switch gateway provider from `dummy` to `external` with env change and adapter updates.
-- Keep your custom payment tool interface unchanged while swapping provider internals.
+- [Agent architecture and flow details](./AGENT.md)
+- [Backend architecture, endpoint and data flow](./BACKEND.md)
+- [Brutal security analysis and risky query catalog](./BRUTAL_SECURITY_ANALYSIS.md)
+- [Auth hardening phased plan and progress](./PROTOTYPE_AUTH_HARDENING_PLAN.md)
 
-## Quick Start
+## Technology Stack
 
-1. Copy env templates:
-   - `Copy-Item .env.agent.example .env.agent`
-   - `Copy-Item .env.gateway.example .env.gateway`
-2. Bootstrap environments:
-   - `powershell -ExecutionPolicy Bypass -File .\\scripts\\bootstrap.ps1`
-3. Run gateway:
-   - `powershell -ExecutionPolicy Bypass -File .\\scripts\\run_gateway.ps1`
-4. Run agent:
-   - `powershell -ExecutionPolicy Bypass -File .\\scripts\\run_agent.ps1`
+- Language: `Python 3.11+`
+- API framework: `FastAPI`
+- ASGI server: `Uvicorn`
+- Config: `pydantic-settings` with unified `.env.agent` (agent + gateway sections)
+- Data contracts and validation: `Pydantic v2`
+- Agent runtime: `pydantic-ai-slim[openrouter]` (optional OpenRouter-backed LLM)
+- HTTP client: `httpx`
+- Database ORM: `SQLAlchemy 2.x`
+- PostgreSQL driver: `psycopg[binary]`
+- Database: `PostgreSQL` (local, Supabase, or managed Postgres)
+- Packaging for shared code: local editable package `shared_lib` (`-e ../shared_lib`)
+- Local dev automation: PowerShell scripts in `scripts/`
 
-## Services
+## Runtime Modes
 
-- Agent API: `http://localhost:8000`
+- Agent parsing mode:
+  - with `OPENROUTER_API_KEY`: LLM-assisted parsing and tool orchestration
+  - without key: deterministic fallback slot extraction
+
+## Codebase Structure
+
+```text
+ap2/
+|-- README.md
+|-- AGENT.md
+|-- .env.agent.example
+|-- scripts/
+|   |-- bootstrap.ps1
+|   |-- run_agent.ps1
+|   `-- run_gateway.ps1
+|-- agent_service/
+|   |-- requirements.txt
+|   |-- prompts/payment_agent_prompt.txt
+|   `-- app/
+|       |-- main.py
+|       |-- api/routes/
+|       |   |-- agent.py
+|       |   `-- health.py
+|       |-- domain/orchestrator.py
+|       |-- services/
+|       |   |-- pydantic_payment_agent.py
+|       |   |-- retrieval.py
+|       |   `-- tool_router.py
+|       `-- core/
+|           |-- config.py
+|           `-- agent_logger.py
+|-- gateway_service/
+|   |-- requirements.txt
+|   |-- migrations/sql/001_init.sql
+|   |-- scripts/bootstrap_dummy_data.py
+|   `-- app/
+|       |-- main.py
+|       |-- api/routes/
+|       |   |-- payments.py
+|       |   `-- health.py
+|       |-- db/
+|       |   |-- models.py
+|       |   |-- repository.py
+|       |   `-- session.py
+|       |-- providers/
+|       |   |-- base.py
+|       |   `-- dummy.py
+|       `-- services/payment_service.py
+`-- shared_lib/
+    |-- pyproject.toml
+    `-- shared_lib/
+        |-- contracts/
+        |   |-- agent.py
+        |   `-- payment.py
+        `-- core/
+            |-- errors.py
+            `-- idempotency.py
+```
+
+## New User Installation
+
+All commands below assume you are running from the repo root.
+
+### 1) Prerequisites
+
+- `Git`
+- `Python 3.11+` available as `python`
+- `PowerShell` (`pwsh` or Windows PowerShell)
+- A reachable PostgreSQL database
+
+### 2) Clone
+
+```powershell
+git clone <your-repository-url>
+cd ap2
+```
+
+### 3) Create env files
+
+```powershell
+Copy-Item .env.agent.example .env.agent
+```
+
+Required edits:
+
+- In `.env.agent`, set `SUPABASE_DATABASE_URL` to your Supabase Postgres DSN.
+- Keep one `INTERNAL_SERVICE_TOKEN` value in `.env.agent` (used by both services).
+
+Optional edits:
+
+- In `.env.agent`, set `OPENROUTER_API_KEY` (and model if needed) for LLM-driven extraction.
+
+### 4) Install all dependencies
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
+```
+
+This creates:
+
+- `.venv-agent`
+- `.venv-gateway`
+
+### 5) Seed initial dummy data
+
+```powershell
+.\.venv-gateway\Scripts\python.exe .\gateway_service\scripts\bootstrap_dummy_data.py --reset
+```
+
+This seeds users, accounts, and verified beneficiaries for local transfer tests.
+
+### 6) Start services
+
+Terminal 1:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_gateway.ps1
+```
+
+Terminal 2:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_agent.ps1
+```
+
+Or start both with one command:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_stack.ps1
+```
+
+Stop both service windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_stack.ps1
+```
+
+### 7) Authenticate in CLI (required before chat)
+
+```powershell
+python .\scripts\cli_login.py --agent-url http://localhost:8000
+```
+
+This writes `.agent_session.json` with:
+- `session_token`
+- `session_id`
+- authenticated internal user mapping
+
+### 8) Verify health
+
+```powershell
+Invoke-RestMethod http://localhost:8100/health
+Invoke-RestMethod http://localhost:8000/health
+```
+
+Expected response contains `status: ok` for both services.
+
+## API Surface
+
+- Agent (`http://localhost:8000`)
+  - `POST /auth/cli/login`
   - `POST /agent/message`
+  - `POST /agent/confirm`
+  - `GET /agent/session/{session_id}`
   - `POST /auth/challenge/start`
   - `POST /auth/challenge/verify`
-- Gateway API: `http://localhost:8100`
+- Gateway (`http://localhost:8100`)
+  - `GET /users/by-supabase/{supabase_user_id}`
+  - `POST /users/provision`
   - `POST /payments/validate`
+  - `POST /receivers/verify`
   - `POST /payments/transfer`
   - `POST /payments/refund`
   - `POST /payments/reverse`
   - `GET /payments/{transaction_id}`
+  - `GET /accounts/{target_user_id}/balance?requestor_user_id=<user_id>`
 
 ## Notes
 
 - Currency is fixed to `AED`.
-- Beneficiary pre-registration is mandatory for transfer.
-- PIN-first with OTP fallback is scaffolded in the agent flow.
-- Database migrations are in `gateway_service/migrations/sql`.
-- `pydantic-ai` uses OpenRouter when `OPENROUTER_API_KEY` is set; otherwise deterministic fallback parsing is used.
+- Beneficiaries must be pre-registered and verified before transfer.
+- Receiver confirmation is required before payment execution.
+- Agent logs are written to `agent_service/logs/agent.log`.
+- Protected agent endpoints require `Authorization: Bearer <session_token>` from CLI login.
+- Gateway service routes are backend-internal and require `X-Internal-Service-Token`.

@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 class AgentMessageRequest(BaseModel):
     session_id: str = Field(..., min_length=3)
-    user_id: str = Field(..., min_length=1)
     message: str = Field(..., min_length=1)
     channel: Literal["text", "voice"] = "text"
 
@@ -25,14 +24,24 @@ class AgentMessageResponse(BaseModel):
 
 class AuthChallengeStartRequest(BaseModel):
     session_id: str
-    user_id: str
     preferred_type: Literal["pin", "otp"] = "pin"
 
 
 class AuthChallengeVerifyRequest(BaseModel):
     challenge_id: str
-    user_id: str
     value: str = Field(..., min_length=1)
+
+
+class CliLoginRequest(BaseModel):
+    email: str = Field(..., min_length=3)
+    password: str = Field(..., min_length=1)
+
+
+class CliLoginResponse(BaseModel):
+    session_token: str
+    session_id: str
+    internal_user_id: str
+    supabase_user_id: str
 
 
 class AuthChallengeVerifyResponse(BaseModel):

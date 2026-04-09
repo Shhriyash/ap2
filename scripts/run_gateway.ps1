@@ -2,13 +2,13 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $venv = Join-Path $root ".venv-gateway\\Scripts\\python.exe"
-$envFile = Join-Path $root ".env.gateway"
+$envFile = Join-Path $root ".env.agent"
 
 if (-not (Test-Path $venv)) {
     throw "Gateway venv not found. Run scripts/bootstrap.ps1 first."
 }
 if (-not (Test-Path $envFile)) {
-    throw ".env.gateway not found. Copy from .env.gateway.example."
+    throw ".env.agent not found. Copy from .env.agent.example."
 }
 
 Get-Content $envFile | ForEach-Object {
