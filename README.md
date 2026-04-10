@@ -122,6 +122,7 @@ Required edits:
 Optional edits:
 
 - In `.env.agent`, set `GROQ_API_KEY` (recommended primary) and optionally `OPENROUTER_API_KEY` for fallback.
+- For voice mode, set `GROQ_API_KEY2` (or reuse `GROQ_API_KEY`) and `DEEPGRAM_API_KEY`.
 
 ### 4) Install all dependencies
 
@@ -193,7 +194,25 @@ This writes `.agent_session.json` with:
 - `session_id`
 - authenticated internal user mapping
 
-### 8) Verify health
+### 8) Voice CLI (STT -> Agent -> TTS)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_voice_cli.ps1
+```
+
+Direct command:
+
+```powershell
+.\.venv-agent\Scripts\python.exe .\scripts\cli_voice.py --agent-url http://localhost:8000
+```
+
+Voice mode constraints:
+- Voice starts only after typed email+password login succeeds.
+- PIN is always entered manually via secure typed prompt during transaction verification.
+- Voice resumes automatically after PIN verification.
+- Voice pipeline uses Groq Whisper STT, Deepgram TTS primary, and Groq TTS fallback.
+
+### 9) Verify health
 
 ```powershell
 Invoke-RestMethod http://localhost:8100/health

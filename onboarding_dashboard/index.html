@@ -3,177 +3,334 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agent2Pay | Landing</title>
+    <title>Agent2Pay - AI-Powered Voice Payments</title>
+    <meta name="description" content="Agent2Pay is a voice-first AI payment assistant enabling direct person-to-person transactions. Just speak to pay." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to main content</a>
-
-    <div class="bg-orb bg-orb-a" aria-hidden="true"></div>
-    <div class="bg-orb bg-orb-b" aria-hidden="true"></div>
-
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-pill" aria-hidden="true"></span>
-        <span class="brand-text">Agent2Pay</span>
+    <div class="gradient-mesh" aria-hidden="true">
+      <div class="mesh-orb mesh-orb--teal"></div>
+      <div class="mesh-orb mesh-orb--violet"></div>
+      <div class="mesh-orb mesh-orb--gold"></div>
+    </div>
+    <canvas id="particle-canvas" aria-hidden="true"></canvas>
+    <nav class="navbar" id="navbar" role="navigation" aria-label="Primary">
+      <div class="navbar__inner">
+        <a href="./index.html" class="navbar__brand" aria-label="Agent2Pay Home">
+          <span class="navbar__logo" aria-hidden="true">A2</span>
+          <span class="navbar__brand-text">Agent2Pay</span>
+        </a>
+        <div class="navbar__links">
+          <a href="#features" class="navbar__link">Features</a>
+          <a href="#how-it-works" class="navbar__link">How It Works</a>
+          <a href="#comparison" class="navbar__link">Why Us</a>
+          <a href="./signup.html" class="navbar__cta">Get Started</a>
+        </div>
       </div>
-      <nav class="top-nav" aria-label="Primary">
-        <a href="#features">Features</a>
-        <a href="./signup.html">Signup</a>
-        <a href="./agent-logs.html">Agent Logs</a>
-      </nav>
-    </header>
-
+    </nav>
     <main id="main-content">
-      <section class="landing-hero reveal" aria-label="Welcome">
-        <div class="landing-hero-copy">
-          <p class="eyebrow">Secure Payment Onboarding Platform</p>
-          <h1>Welcome to Agent2Pay</h1>
-          <p class="hero-sub">
-            A product-grade onboarding experience for payment assistant users with signup, PIN setup, OTP verification,
-            and operational visibility in one cohesive flow.
+      <section class="section hero">
+        <div class="hero__inner">
+          <div class="hero__badge">
+            <span class="hero__badge-dot"></span>
+            AI-Powered Payment Assistant
+          </div>
+          <h1 class="hero__title">
+            Pay Anyone, Anywhere<br />
+            <span class="hero__title-highlight">Just Say It.</span>
+          </h1>
+          <p class="hero__subtitle">
+            Agent2Pay lets you send money to anyone - person to person, no intermediaries - using nothing but your voice.
+            Powered by AI that understands intent, verifies identity, and executes securely.
           </p>
-          <div class="hero-actions">
-            <a class="btn btn-primary" href="./signup.html">Signup</a>
-            <a class="btn btn-secondary" href="#features">Features</a>
+          <div class="hero__actions">
+            <a href="./signup.html" class="btn btn-primary btn-lg" id="hero-signup-cta">
+              Start Your Journey
+              <span class="btn__arrow" aria-hidden="true">&rarr;</span>
+            </a>
+            <a href="#features" class="btn btn-secondary btn-lg">
+              Explore Features
+            </a>
           </div>
-          <div class="hero-trust" aria-label="Platform highlights">
-            <span>Fast onboarding</span>
-            <span>Verification-first</span>
-            <span>Live agent logs</span>
+
+        </div>
+      </section>
+      <section class="stats-band" aria-label="Key metrics">
+        <div class="stats-band__inner">
+          <div class="stat-item reveal">
+            <div class="stat-item__value">P2P</div>
+            <div class="stat-item__label">Direct Transfers</div>
+          </div>
+          <div class="stat-item reveal reveal-delay-1">
+            <div class="stat-item__value">Voice</div>
+            <div class="stat-item__label">Driven Commands</div>
+          </div>
+          <div class="stat-item reveal reveal-delay-2">
+            <div class="stat-item__value">256-bit</div>
+            <div class="stat-item__label">Encryption</div>
+          </div>
+          <div class="stat-item reveal reveal-delay-3">
+            <div class="stat-item__value">&lt;2s</div>
+            <div class="stat-item__label">Transaction Time</div>
           </div>
         </div>
-
-        <div class="landing-product-shell" aria-label="Product Preview">
-          <div class="product-topbar">
-            <span class="dot dot-red" aria-hidden="true"></span>
-            <span class="dot dot-amber" aria-hidden="true"></span>
-            <span class="dot dot-green" aria-hidden="true"></span>
-            <p>Agent2Pay Console Preview</p>
-          </div>
-          <div class="product-body">
-            <aside class="product-nav">
-              <span class="nav-chip active">Onboarding</span>
-              <span class="nav-chip">Users</span>
-              <span class="nav-chip">Sessions</span>
-              <span class="nav-chip">Logs</span>
-            </aside>
-            <div class="product-panel">
-              <div class="panel-block">
-                <p class="panel-title">Signup Progress</p>
-                <div class="progress-track" aria-hidden="true"><span></span></div>
-                <p class="panel-foot">Step 3 of 4 completed</p>
-              </div>
-              <div class="panel-grid">
-                <div class="panel-kpi">
-                  <p class="kpi-label">Today signups</p>
-                  <p class="kpi-value">128</p>
+      </section>
+      <section class="section" id="features">
+        <div class="section__inner">
+          <p class="section__eyebrow reveal">What Sets Us Apart</p>
+          <h2 class="section__title reveal reveal-delay-1">Built Different.<br />Built Better.</h2>
+          <p class="section__subtitle reveal reveal-delay-2">
+            Most payment platforms rely on middleware, third-party rails, or complex integrations.
+            Agent2Pay removes the friction entirely.
+          </p>
+          <div class="features-grid" style="margin-top: 3rem;">
+            <div class="feature-card reveal" id="feature-p2p">
+              <div class="feature-card__content">
+                <div class="feature-card__icon feature-card__icon--teal" aria-hidden="true">&#128279;</div>
+                <h3 class="feature-card__title">True P2P Transactions</h3>
+                <p class="feature-card__desc">
+                  Send money directly from one person to another - no payment gateways, no clearing houses, no middlemen.
+                  Where most frameworks require merchant integrations or protocol-level infrastructure, Agent2Pay connects people directly.
+                </p>
+                <div class="feature-card__tags">
+                  <span class="feature-tag">No Intermediaries</span>
+                  <span class="feature-tag">Direct Debit/Credit</span>
+                  <span class="feature-tag">Verified Beneficiaries</span>
                 </div>
-                <div class="panel-kpi">
-                  <p class="kpi-label">OTP success</p>
-                  <p class="kpi-value">96.4%</p>
+              </div>
+              <div class="feature-visual" aria-label="P2P transfer animation">
+                <div class="p2p-visual">
+                  <div class="p2p-node">
+                    <div class="p2p-avatar p2p-avatar--sender">Y</div>
+                    <span class="p2p-label">You</span>
+                  </div>
+                  <div class="p2p-flow">
+                    <span class="p2p-amount">50 AED</span>
+                    <div class="p2p-arrow">
+                      <div class="p2p-arrow__line"></div>
+                    </div>
+                  </div>
+                  <div class="p2p-node">
+                    <div class="p2p-avatar p2p-avatar--receiver">S</div>
+                    <span class="p2p-label">Sarah</span>
+                  </div>
+                </div>
+                <div class="p2p-particles" aria-hidden="true">
+                  <span class="p2p-particle"></span>
+                  <span class="p2p-particle"></span>
+                  <span class="p2p-particle"></span>
+                  <span class="p2p-particle"></span>
+                  <span class="p2p-particle"></span>
                 </div>
               </div>
-              <div class="panel-block">
-                <p class="panel-title">Latest Event</p>
-                <p class="event-row"><strong>user_x</strong> completed verification and moved to CLI auth.</p>
+            </div>
+            <div class="feature-card feature-card--reverse reveal" id="feature-voice">
+              <div class="feature-card__content">
+                <div class="feature-card__icon feature-card__icon--violet" aria-hidden="true">&#127908;</div>
+                <h3 class="feature-card__title">Voice-First Payments</h3>
+                <p class="feature-card__desc">
+                  Just speak your intent naturally. Our AI agent understands context, extracts payment details, confirms with you,
+                  and executes - all through conversation. No forms, no menus, no friction.
+                </p>
+                <div class="feature-card__tags">
+                  <span class="feature-tag">Natural Language</span>
+                  <span class="feature-tag">AI Intent Extraction</span>
+                  <span class="feature-tag">Smart Confirmation</span>
+                </div>
+              </div>
+              <div class="feature-visual" aria-label="Voice command demo">
+                <div class="voice-visual">
+                  <div class="voice-waveform" aria-hidden="true">
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                    <span class="voice-bar"></span>
+                  </div>
+                  <div class="voice-cmd voice-cmd--user" id="voice-line-1">
+                    <span id="voice-text-1"></span><span class="typing-cursor" id="cursor-1"></span>
+                  </div>
+                  <div class="voice-cmd voice-cmd--ai" id="voice-line-2" style="opacity: 0;">
+                    <span id="voice-text-2"></span>
+                  </div>
+                  <div class="voice-cmd voice-cmd--status" id="voice-line-3" style="opacity: 0;">
+                    <span id="voice-text-3"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="feature-card reveal" id="feature-security">
+              <div class="feature-card__content">
+                <div class="feature-card__icon feature-card__icon--gold" aria-hidden="true">&#128737;</div>
+                <h3 class="feature-card__title">Multi-Layer Security</h3>
+                <p class="feature-card__desc">
+                  Every transaction passes through PIN verification, OTP challenges, beneficiary pre-registration,
+                  idempotency controls, and real-time risk analysis. Human-equivalent safety - powered by AI.
+                </p>
+                <div class="feature-card__tags">
+                  <span class="feature-tag">PIN + OTP</span>
+                  <span class="feature-tag">Beneficiary Verification</span>
+                  <span class="feature-tag">Risk Engine</span>
+                </div>
+              </div>
+              <div class="feature-visual" aria-label="Security verification steps">
+                <div class="security-visual" id="security-demo">
+                  <div class="security-step is-active" data-security-step="1">
+                    <span class="security-step__check">&#10003;</span>
+                    <span class="security-step__text">Beneficiary verified</span>
+                  </div>
+                  <div class="security-step" data-security-step="2">
+                    <span class="security-step__check">&#10003;</span>
+                    <span class="security-step__text">PIN authenticated</span>
+                  </div>
+                  <div class="security-step" data-security-step="3">
+                    <span class="security-step__check">&#10003;</span>
+                    <span class="security-step__text">OTP verified</span>
+                  </div>
+                  <div class="security-step" data-security-step="4">
+                    <span class="security-step__check">&#10003;</span>
+                    <span class="security-step__text">Risk check passed</span>
+                  </div>
+                  <div class="security-step" data-security-step="5">
+                    <span class="security-step__check">&#10003;</span>
+                    <span class="security-step__text">Transaction executed</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
-
-      <section class="stats-band reveal" aria-label="Product stats">
-        <article>
-          <p class="stat-num">4</p>
-          <p class="stat-txt">structured onboarding steps</p>
-        </article>
-        <article>
-          <p class="stat-num">2</p>
-          <p class="stat-txt">dedicated product surfaces</p>
-        </article>
-        <article>
-          <p class="stat-num">1</p>
-          <p class="stat-txt">single-click move to signup</p>
-        </article>
-      </section>
-
-      <section id="features" class="features-section reveal" aria-label="Product Features">
-        <div class="features-head">
-          <p class="eyebrow">Core Capabilities</p>
-          <h2>Built Like a Product, Not a Prototype Screen</h2>
-        </div>
-
-        <div class="feature-showcase">
-          <article class="showcase-card">
-            <div class="showcase-copy">
-              <h3>Guided onboarding journey</h3>
-              <p>Clear, stepwise progression from user details to PIN and OTP completion with contextual feedback.</p>
-              <ul>
-                <li>Explicit step states</li>
-                <li>Inline validation and recovery</li>
-                <li>Completion summary for next action</li>
-              </ul>
-            </div>
-            <div class="showcase-visual">
-              <div class="visual-shell visual-flow">
-                <span>Details</span>
-                <span>PIN</span>
-                <span>OTP</span>
-                <span>Complete</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="showcase-card reverse">
-            <div class="showcase-copy">
-              <h3>Operational visibility surface</h3>
-              <p>A separate live logs page allows agent-session tracking without overloading onboarding UX.</p>
-              <ul>
-                <li>Session-based tracking</li>
-                <li>Live refresh cycle</li>
-                <li>Clear start-stop controls</li>
-              </ul>
-            </div>
-            <div class="showcase-visual">
-              <div class="visual-shell visual-log">
-                <p>sess_1924 · state changed</p>
-                <p>sess_1924 · auth verified</p>
-                <p>sess_1924 · ready_to_execute</p>
-              </div>
-            </div>
-          </article>
+      <section class="section" id="comparison">
+        <div class="section__inner">
+          <p class="section__eyebrow reveal">Why Agent2Pay</p>
+          <h2 class="section__title reveal reveal-delay-1">Traditional Frameworks<br />vs Agent2Pay</h2>
+          <p class="section__subtitle reveal reveal-delay-2">
+            Standard payment protocols were not built for direct human-to-human transfers or voice interaction. We are.
+          </p>
+          <div class="reveal reveal-delay-3" style="margin-top: 2.5rem; overflow-x: auto;">
+            <table class="comparison-table" id="comparison-table">
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>Traditional</th>
+                  <th>Agent2Pay</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>P2P Direct Transfers</td>
+                  <td>Requires merchant integration</td>
+                  <td>Native P2P</td>
+                </tr>
+                <tr>
+                  <td>Voice Command Interface</td>
+                  <td>Form / API only</td>
+                  <td>Voice-first AI</td>
+                </tr>
+                <tr>
+                  <td>Natural Language Processing</td>
+                  <td>Structured input required</td>
+                  <td>AI intent extraction</td>
+                </tr>
+                <tr>
+                  <td>Beneficiary Verification</td>
+                  <td>Manual setup</td>
+                  <td>Auto-verified flow</td>
+                </tr>
+                <tr>
+                  <td>Multi-Factor Auth</td>
+                  <td>Partial â€” often external</td>
+                  <td>PIN + OTP built-in</td>
+                </tr>
+                <tr>
+                  <td>Conversational UX</td>
+                  <td>None</td>
+                  <td>Dialogue-driven flow</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
-
-      <section class="workflow-section reveal" aria-label="Workflow">
-        <div class="features-head">
-          <p class="eyebrow">How It Works</p>
-          <h2>From landing to verification in minutes</h2>
+      <section class="section" id="how-it-works">
+        <div class="section__inner" style="text-align: center;">
+          <p class="section__eyebrow reveal" style="justify-content: center;">How It Works</p>
+          <h2 class="section__title reveal reveal-delay-1">Four Steps. Effortless.</h2>
+          <p class="section__subtitle reveal reveal-delay-2" style="margin: 0 auto;">
+            From voice command to confirmed transfer - in under two seconds.
+          </p>
+          <div class="timeline reveal reveal-delay-3" id="timeline">
+            <div class="timeline-step" data-timeline-step="1">
+              <div class="timeline-step__num timeline-step__num--teal">1</div>
+              <div class="timeline-step__content">
+                <h3 class="timeline-step__title">Speak</h3>
+                <p class="timeline-step__desc">Say your payment intent naturally</p>
+              </div>
+            </div>
+            <div class="timeline-step" data-timeline-step="2">
+              <div class="timeline-step__num timeline-step__num--violet">2</div>
+              <div class="timeline-step__content">
+                <h3 class="timeline-step__title">AI Extracts</h3>
+                <p class="timeline-step__desc">Intent, amount, and recipient identified</p>
+              </div>
+            </div>
+            <div class="timeline-step" data-timeline-step="3">
+              <div class="timeline-step__num timeline-step__num--gold">3</div>
+              <div class="timeline-step__content">
+                <h3 class="timeline-step__title">Verify</h3>
+                <p class="timeline-step__desc">PIN + OTP + beneficiary check</p>
+              </div>
+            </div>
+            <div class="timeline-step" data-timeline-step="4">
+              <div class="timeline-step__num timeline-step__num--green">4</div>
+              <div class="timeline-step__content">
+                <h3 class="timeline-step__title">Paid</h3>
+                <p class="timeline-step__desc">Direct P2P transfer confirmed</p>
+              </div>
+            </div>
+          </div>
         </div>
-        <ol class="workflow-list">
-          <li>
-            <h3>Open Signup</h3>
-            <p>Start from the primary CTA and move into the dedicated signup page.</p>
-          </li>
-          <li>
-            <h3>Complete secure setup</h3>
-            <p>Register details, set PIN, and verify OTP channel in a guided form sequence.</p>
-          </li>
-          <li>
-            <h3>Monitor agent status</h3>
-            <p>Use the separate agent logs page to watch session updates in real time.</p>
-          </li>
-        </ol>
+      </section>
+      <section class="section cta-section" id="cta">
+        <div class="section__inner">
+          <p class="section__eyebrow reveal" style="justify-content: center;">Ready?</p>
+          <h2 class="section__title reveal reveal-delay-1" style="text-align: center;">
+            Start Your Journey<br />
+            <span class="cta-gradient-text">
+              with Agent2Pay
+            </span>
+          </h2>
+          <p class="section__subtitle reveal reveal-delay-2" style="text-align: center; margin: 0 auto 2.5rem;">
+            Create your account in minutes. Set up your PIN, verify your identity,
+            and start sending money with your voice.
+          </p>
+          <div class="reveal reveal-delay-3" style="text-align: center;">
+            <a href="./signup.html" class="btn btn-primary btn-lg" id="cta-signup-btn">
+              Create Account
+              <span class="btn__arrow" aria-hidden="true">&rarr;</span>
+            </a>
+          </div>
+        </div>
       </section>
     </main>
-
-    <script type="module" src="./landing.js"></script>
+    <footer class="footer">
+      <div class="footer__inner">
+        <span class="footer__brand">Agent2Pay</span>
+        <span class="footer__copy">AI-Powered Voice Payments</span>
+      </div>
+    </footer>
+    <script src="./landing.js"></script>
   </body>
 </html>

@@ -15,7 +15,8 @@
 - Step 1: General details + email signup.
 - Step 2: PIN setup.
 - Step 3: OTP device start + OTP verification.
-- Step 4: Completion summary + CLI handoff guidance.
+- Step 4: Account connection (bank account or debit card) with skip option.
+- Step 5: Completion summary + CLI handoff guidance.
 
 3. Backend wiring
 - Live API request logging panel.
@@ -47,8 +48,7 @@
 From repo root:
 
 ```powershell
-cd onboarding_dashboard
-python -m http.server 5173
+python -m http.server 5173 --directory onboarding_dashboard
 ```
 
 Open:

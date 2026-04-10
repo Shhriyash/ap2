@@ -55,6 +55,8 @@ Recommended entries to paste now:
 | `SUPABASE_SERVICE_ROLE_KEY` | Existing service role key | Team-provided |
 | `GROQ_API_KEY` | Existing Groq key | Team-provided |
 | `OPENROUTER_API_KEY` | Existing OpenRouter key | Team-provided |
+| `GROQ_API_KEY2` | Groq key for FastRTC STT/TTS helpers | Team-provided |
+| `DEEPGRAM_API_KEY` | Deepgram key for primary TTS | Team-provided |
 
 Keep defaults unless your team says otherwise:
 - `AGENT_HOST=0.0.0.0`
@@ -79,11 +81,15 @@ This creates:
 python -m venv .venv-agent
 python -m venv .venv-gateway
 
-.\.venv-agent\Scripts\pip.exe install --upgrade pip
-.\.venv-agent\Scripts\pip.exe install -r .\agent_service\requirements.txt
+Push-Location .\agent_service
+..\.venv-agent\Scripts\pip.exe install --upgrade pip
+..\.venv-agent\Scripts\pip.exe install -r .\requirements.txt
+Pop-Location
 
-.\.venv-gateway\Scripts\pip.exe install --upgrade pip
-.\.venv-gateway\Scripts\pip.exe install -r .\gateway_service\requirements.txt
+Push-Location .\gateway_service
+..\.venv-gateway\Scripts\pip.exe install --upgrade pip
+..\.venv-gateway\Scripts\pip.exe install -r .\requirements.txt
+Pop-Location
 ```
 
 What gets installed:
@@ -155,12 +161,29 @@ When prompted, enter:
 This writes `.agent_session.json` and starts interactive chat.
 PIN is used later only for payment confirmation/auth challenge.
 
-## 9) Run Frontend (Landing + Signup + Agent Logs)
+## 9) Voice CLI (STT -> agent -> TTS)
+Run voice mode after services are up:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_voice_cli.ps1
+```
+
+Direct command:
+
+```powershell
+.\.venv-agent\Scripts\python.exe .\scripts\cli_voice.py --agent-url http://localhost:8000
+```
+
+Voice policy in this flow:
+- No voice interaction before CLI login is successful.
+- PIN entry during payment verification is typed-only (never voice-captured).
+- STT uses Groq Whisper; TTS uses Deepgram with Groq fallback.
+
+## 10) Run Frontend (Landing + Signup + Agent Logs)
 In a new terminal:
 
 ```powershell
-cd onboarding_dashboard
-python -m http.server 5173
+python -m http.server 5173 --directory onboarding_dashboard
 ```
 
 Open browser:
@@ -171,14 +194,14 @@ Pages:
 - Signup: `/signup.html`
 - Agent Logs: `/agent-logs.html`
 
-## 10) Stop Services
+## 11) Stop Services
 From repo root:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\stop_stack.ps1
 ```
 
-## 11) Quick Troubleshooting
+## 12) Quick Troubleshooting
 If ports are stuck (`10048` bind error), run:
 
 ```powershell

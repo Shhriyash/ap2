@@ -26,8 +26,16 @@ function Install-Req {
         [string]$ReqPath
     )
     $pip = Join-Path $VenvPath "Scripts\\pip.exe"
+    $reqDir = Split-Path -Parent $ReqPath
+    $reqFile = Split-Path -Leaf $ReqPath
     & $pip install --upgrade pip
-    & $pip install -r $ReqPath
+    Push-Location $reqDir
+    try {
+        & $pip install -r $reqFile
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 New-Or-RebuildVenv -Path $agentVenv
