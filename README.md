@@ -20,7 +20,7 @@ This repo is a split-service prototype for an AI payment assistant:
 - ASGI server: `Uvicorn`
 - Config: `pydantic-settings` with unified `.env.agent` (agent + gateway sections)
 - Data contracts and validation: `Pydantic v2`
-- Agent runtime: `pydantic-ai-slim[openrouter]` (optional OpenRouter-backed LLM)
+- Agent runtime: `pydantic-ai-slim[openrouter,groq]` (Groq primary, OpenRouter fallback)
 - HTTP client: `httpx`
 - Database ORM: `SQLAlchemy 2.x`
 - PostgreSQL driver: `psycopg[binary]`
@@ -31,8 +31,9 @@ This repo is a split-service prototype for an AI payment assistant:
 ## Runtime Modes
 
 - Agent parsing mode:
-  - with `OPENROUTER_API_KEY`: LLM-assisted parsing and tool orchestration
-  - without key: deterministic fallback slot extraction
+  - with `GROQ_API_KEY`: Groq LLM-assisted parsing/tool orchestration
+  - with both `GROQ_API_KEY` and `OPENROUTER_API_KEY`: OpenRouter fallback on Groq rate-limit errors
+  - without either key: deterministic fallback slot extraction
 
 ## Codebase Structure
 
@@ -120,7 +121,7 @@ Required edits:
 
 Optional edits:
 
-- In `.env.agent`, set `OPENROUTER_API_KEY` (and model if needed) for LLM-driven extraction.
+- In `.env.agent`, set `GROQ_API_KEY` (recommended primary) and optionally `OPENROUTER_API_KEY` for fallback.
 
 ### 4) Install all dependencies
 
@@ -160,6 +161,8 @@ Or start both with one command:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run_stack.ps1
 ```
+
+`run_stack.ps1` now performs a pre-clean automatically (stale PID file + listeners on agent/gateway ports) to avoid Windows bind errors like `WinError 10048`.
 
 Stop both service windows:
 
@@ -210,7 +213,7 @@ Expected response contains `status: ok` for both services.
 ## Notes
 
 - Currency is fixed to `AED`.
-- Beneficiaries must be pre-registered and verified before transfer.
+- Receiver is verified by email against active users, then sender confirms before transfer.
 - Receiver confirmation is required before payment execution.
 - Agent logs are written to `agent_service/logs/agent.log`.
 - Protected agent endpoints require `Authorization: Bearer <session_token>` from CLI login.

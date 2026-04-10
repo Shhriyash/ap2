@@ -34,6 +34,13 @@ class SessionState:
     auth_verified: bool = False
     auth_context_id: str | None = None
     ready_to_execute: bool = False
+    last_transfer_amount: Decimal | None = None
+    last_transfer_currency: str | None = None
+    last_transfer_receiver: str | None = None
+    last_transfer_note: str = ""
+    last_transfer_transaction_id: str | None = None
+    last_transfer_status: str | None = None
+    last_transfer_timestamp: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -51,6 +58,13 @@ class SessionState:
             "auth_verified": self.auth_verified,
             "auth_context_id": self.auth_context_id,
             "ready_to_execute": self.ready_to_execute,
+            "last_transfer_amount": str(self.last_transfer_amount) if self.last_transfer_amount is not None else None,
+            "last_transfer_currency": self.last_transfer_currency,
+            "last_transfer_receiver": self.last_transfer_receiver,
+            "last_transfer_note": self.last_transfer_note,
+            "last_transfer_transaction_id": self.last_transfer_transaction_id,
+            "last_transfer_status": self.last_transfer_status,
+            "last_transfer_timestamp": self.last_transfer_timestamp,
         }
 
 
@@ -105,15 +119,48 @@ class AgentOrchestrator:
             state.awaiting_note = False
             state.note_collected = True
 
+        if self._is_receivers_help_query(lower) and not self._contains_amount_or_email(message):
+            return AgentMessageResponse(
+                session_id=session_id,
+                response=(
+                    "You can send to any active registered user by email. "
+                    "Share receiver email and amount, for example: send 50 AED to friend@example.com."
+                ),
+                next_action="ask_slot",
+                state=state.to_dict(),
+            )
+
         beneficiaries = await self._retrieval.get_beneficiaries(user_id)
         default_method = await self._retrieval.get_default_payment_method(user_id)
         slots = None
         if not state.receiver_confirmed or state.amount is None or state.awaiting_note:
             slots = await self._agent.extract_slots(
+                session_id=session_id,
                 user_id=user_id,
                 message=message,
                 beneficiaries=beneficiaries,
                 default_method_id=default_method,
+            )
+
+        if slots and slots.intent == "last_transfer":
+            if not state.last_transfer_transaction_id:
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response="No transfer has been executed in this session yet.",
+                    next_action="ask_slot",
+                    state=state.to_dict(),
+                )
+            return AgentMessageResponse(
+                session_id=session_id,
+                response=(
+                    f"Last transfer: {state.last_transfer_amount} {state.last_transfer_currency} "
+                    f"to {state.last_transfer_receiver}. "
+                    f"status={state.last_transfer_status}. "
+                    f"transaction_id={state.last_transfer_transaction_id}. "
+                    f"timestamp={state.last_transfer_timestamp or 'n/a'}."
+                ),
+                next_action="executed",
+                state=state.to_dict(),
             )
 
         if slots and slots.intent == "check_balance":
@@ -173,6 +220,17 @@ class AgentOrchestrator:
             and not state.beneficiary_name
             and not state.beneficiary_id
         ):
+            if self._is_receivers_help_query(lower):
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response=(
+                        "You can send to any active registered user by email. "
+                        "Tell me receiver email and amount, for example: send 50 AED to friend@example.com."
+                    ),
+                    next_action="ask_slot",
+                    state=state.to_dict(),
+                )
+
             if self._is_greeting(lower) or self._is_small_talk(lower):
                 return AgentMessageResponse(
                     session_id=session_id,
@@ -206,7 +264,10 @@ class AgentOrchestrator:
 
         if slots:
             if slots.amount is not None:
-                state.amount = slots.amount
+                try:
+                    state.amount = Decimal(str(slots.amount))
+                except Exception:
+                    state.amount = state.amount
             if slots.receiver_hint:
                 state.beneficiary_name = slots.receiver_hint
             if slots.beneficiary_id:
@@ -481,18 +542,30 @@ class AgentOrchestrator:
                 state=state.to_dict(),
             )
 
-        result = await self._agent.execute_with_tool_call(
-            PaymentExecutionInput(
-                payer_user_id=state.user_id,
-                session_id=session_id,
-                beneficiary_id=state.beneficiary_id or "",
-                amount=state.amount or Decimal("0"),
-                payment_method_id=state.payment_method_id or "",
-                purpose=state.purpose,
-                auth_context_id=state.auth_context_id or "",
-                idempotency_key=make_idempotency_key(),
+        try:
+            result = await self._agent.execute_with_tool_call(
+                PaymentExecutionInput(
+                    payer_user_id=state.user_id,
+                    session_id=session_id,
+                    beneficiary_id=state.beneficiary_id or "",
+                    amount=state.amount or Decimal("0"),
+                    payment_method_id=state.payment_method_id or "",
+                    purpose=state.purpose,
+                    auth_context_id=state.auth_context_id or "",
+                    idempotency_key=make_idempotency_key(),
+                )
             )
-        )
+        except Exception as exc:
+            log_event(
+                "payment_execution_exception",
+                {"session_id": session_id, "user_id": state.user_id, "error": str(exc)[:500]},
+            )
+            return AgentMessageResponse(
+                session_id=session_id,
+                response="Transfer failed due to a temporary execution error. Please retry.",
+                next_action="failed",
+                state=state.to_dict(),
+            )
         balance_text = ""
         if result.status == "SUCCESS":
             try:
@@ -500,6 +573,13 @@ class AgentOrchestrator:
                 balance_text = f" Available balance: {balance.available_balance} {balance.currency}."
             except Exception:
                 balance_text = ""
+        state.last_transfer_amount = state.amount
+        state.last_transfer_currency = settings.default_currency
+        state.last_transfer_receiver = state.beneficiary_name or state.beneficiary_id
+        state.last_transfer_note = state.purpose
+        state.last_transfer_transaction_id = result.transaction_id
+        state.last_transfer_status = result.status
+        state.last_transfer_timestamp = result.timestamp
         self._reset_payment_state(state)
         log_event(
             "payment_execution_result",
@@ -581,6 +661,19 @@ class AgentOrchestrator:
                 "capabilities",
             }
         )
+
+    @staticmethod
+    def _is_receivers_help_query(lower_message: str) -> bool:
+        return (
+            ("who" in lower_message or "whom" in lower_message)
+            and ("send" in lower_message or "pay" in lower_message or "transfer" in lower_message)
+        )
+
+    @staticmethod
+    def _contains_amount_or_email(message: str) -> bool:
+        if re.search(r"\b\d+(?:\.\d{1,2})?\b", message):
+            return True
+        return bool(re.search(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", message))
 
     @staticmethod
     def _clear_receiver(state: SessionState) -> None:

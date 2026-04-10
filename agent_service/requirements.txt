@@ -3,4 +3,4 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pydantic-settings>=2.4.0
 httpx>=0.27.0
-pydantic-ai-slim[openrouter]>=0.0.26
+pydantic-ai-slim[openrouter,groq]>=0.0.26

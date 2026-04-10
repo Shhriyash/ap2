@@ -9,6 +9,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.messages import ModelMessage
+from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.settings import ModelSettings
 
 from app.core.agent_logger import log_event
@@ -31,8 +34,8 @@ class PaymentExecutionDeps:
 
 
 class IntentSlots(BaseModel):
-    intent: Literal["send_money", "check_balance", "unknown"]
-    amount: Decimal | None = None
+    intent: Literal["send_money", "check_balance", "last_transfer", "unknown"]
+    amount: float | None = None
     receiver_hint: str | None = None
     beneficiary_id: str | None = None
     target_user_id: str | None = None
@@ -61,20 +64,27 @@ class PaymentExecutionInput(BaseModel):
 
 class PydanticPaymentAgentService:
     def __init__(self) -> None:
-        self._enabled = bool(settings.openrouter_api_key)
+        self._enabled = bool(settings.groq_api_key or settings.openrouter_api_key)
         self._tool_router = PaymentToolRouter()
         self._slot_agent: Agent[SlotExtractionDeps, IntentSlots] | None = None
-        self._slot_agent_fallback: Agent[SlotExtractionDeps, IntentSlots] | None = None
         self._execution_agent: Agent[PaymentExecutionDeps, ExecutionResult] | None = None
+        self._slot_histories: dict[str, list[ModelMessage]] = {}
+        self._slot_history_max_messages = 20
 
         if self._enabled:
-            # pydantic-ai OpenRouter provider expects OPENROUTER_API_KEY in environment.
+            # Provider SDKs resolve keys from environment.
+            if settings.groq_api_key and not os.getenv("GROQ_API_KEY"):
+                os.environ["GROQ_API_KEY"] = settings.groq_api_key
             if not os.getenv("OPENROUTER_API_KEY"):
                 os.environ["OPENROUTER_API_KEY"] = settings.openrouter_api_key
+
             instructions = _load_prompt_instructions()
-            slot_model = (settings.openrouter_slot_model or settings.openrouter_model).strip()
+            slot_model = self._build_model_with_rate_limit_fallback(
+                groq_model_name=(settings.groq_slot_model or settings.groq_model).strip(),
+                openrouter_model_name=(settings.openrouter_slot_model or settings.openrouter_model).strip(),
+            )
             self._slot_agent = Agent(
-                model=f"openrouter:{slot_model}",
+                model=slot_model,
                 deps_type=SlotExtractionDeps,
                 output_type=IntentSlots,
                 instructions=instructions,
@@ -82,19 +92,11 @@ class PydanticPaymentAgentService:
             )
             self._register_slot_tools(self._slot_agent)
 
-            primary_model = settings.openrouter_model.strip()
-            if primary_model and primary_model != slot_model:
-                self._slot_agent_fallback = Agent(
-                    model=f"openrouter:{primary_model}",
-                    deps_type=SlotExtractionDeps,
-                    output_type=IntentSlots,
-                    instructions=instructions,
-                    model_settings=ModelSettings(max_tokens=settings.openrouter_slot_max_tokens),
-                )
-                self._register_slot_tools(self._slot_agent_fallback)
-
             self._execution_agent = Agent(
-                model=f"openrouter:{settings.openrouter_model}",
+                model=self._build_model_with_rate_limit_fallback(
+                    groq_model_name=settings.groq_model.strip(),
+                    openrouter_model_name=settings.openrouter_model.strip(),
+                ),
                 deps_type=PaymentExecutionDeps,
                 output_type=ExecutionResult,
                 instructions=(
@@ -105,6 +107,34 @@ class PydanticPaymentAgentService:
                 model_settings=ModelSettings(max_tokens=settings.openrouter_execution_max_tokens),
             )
             self._register_execution_tools()
+
+    def _build_model_with_rate_limit_fallback(self, groq_model_name: str, openrouter_model_name: str):
+        groq_model = f"groq:{groq_model_name}" if settings.groq_api_key and groq_model_name else None
+        openrouter_model = (
+            f"openrouter:{openrouter_model_name}" if settings.openrouter_api_key and openrouter_model_name else None
+        )
+
+        if groq_model and openrouter_model:
+            return FallbackModel(
+                groq_model,
+                openrouter_model,
+                fallback_on=self._fallback_on_groq_rate_limit,
+            )
+        if groq_model:
+            return groq_model
+        if openrouter_model:
+            return openrouter_model
+        raise RuntimeError("No LLM provider configured. Set GROQ_API_KEY or OPENROUTER_API_KEY.")
+
+    @staticmethod
+    def _fallback_on_groq_rate_limit(exc: Exception) -> bool:
+        if not isinstance(exc, ModelHTTPError):
+            return False
+        status_code = getattr(exc, "status_code", None)
+        if status_code in {429, 503}:
+            return True
+        body_text = str(getattr(exc, "body", "")).lower()
+        return any(token in body_text for token in {"rate limit", "too many requests", "quota", "invalid json schema"})
 
     def _register_slot_tools(self, slot_agent: Agent[SlotExtractionDeps, IntentSlots]) -> None:
         @slot_agent.tool
@@ -125,7 +155,7 @@ class PydanticPaymentAgentService:
             payer_user_id: str,
             session_id: str,
             beneficiary_id: str,
-            amount: Decimal,
+            amount: float,
             payment_method_id: str,
             purpose: str,
             auth_context_id: str,
@@ -135,7 +165,7 @@ class PydanticPaymentAgentService:
                 payer_user_id=payer_user_id,
                 session_id=session_id,
                 beneficiary_id=beneficiary_id,
-                amount=amount,
+                amount=Decimal(str(amount)),
                 currency="AED",
                 payment_method_id=payment_method_id,
                 purpose=purpose,
@@ -147,6 +177,7 @@ class PydanticPaymentAgentService:
 
     async def extract_slots(
         self,
+        session_id: str,
         user_id: str,
         message: str,
         beneficiaries: list[dict],
@@ -163,7 +194,12 @@ class PydanticPaymentAgentService:
 
         last_error: Exception | None = None
         try:
-            result = await self._slot_agent.run(message, deps=deps)
+            result = await self._slot_agent.run(
+                message,
+                deps=deps,
+                message_history=self._slot_histories.get(session_id, []),
+            )
+            self._slot_histories[session_id] = result.all_messages()[-self._slot_history_max_messages :]
             slots = result.output
             log_event(
                 "slot_extraction_primary",
@@ -177,23 +213,6 @@ class PydanticPaymentAgentService:
             last_error = exc
             slots = None
             log_event("slot_extraction_primary_error", {"error": str(exc)[:500]})
-
-        if (slots is None or self._slots_empty(slots)) and self._slot_agent_fallback is not None:
-            try:
-                retry_result = await self._slot_agent_fallback.run(message, deps=deps)
-                slots = retry_result.output
-                last_error = None
-                log_event(
-                    "slot_extraction_fallback",
-                    {
-                        "intent": slots.intent,
-                        "has_amount": slots.amount is not None,
-                        "has_receiver_hint": bool(slots.receiver_hint),
-                    },
-                )
-            except Exception as exc:
-                last_error = exc
-                log_event("slot_extraction_fallback_error", {"error": str(exc)[:500]})
 
         if slots is None:
             if last_error:
@@ -232,15 +251,18 @@ class PydanticPaymentAgentService:
             f"{payload.model_dump_json(indent=2)}\n"
             "Do not change values."
         )
-        run_result = await self._execution_agent.run(prompt, deps=deps)
-        output = run_result.output
-        if not output.executed:
-            return PaymentTransferResponse(
-                transaction_id="",
-                status="FAILED",
-                message=output.message,
-                failure_code="EXECUTION_AGENT_ABORTED",
-            )
+        try:
+            run_result = await self._execution_agent.run(prompt, deps=deps)
+            output = run_result.output
+            if not output.executed:
+                return PaymentTransferResponse(
+                    transaction_id="",
+                    status="FAILED",
+                    message=output.message,
+                    failure_code="EXECUTION_AGENT_ABORTED",
+                )
+        except Exception as exc:
+            log_event("execution_agent_error", {"error": str(exc)[:500]})
 
         # Tool output is returned through model narration, so fetch directly as reliable fallback.
         return await self._tool_router.transfer(
@@ -286,6 +308,8 @@ class PydanticPaymentAgentService:
 
         if self._is_balance_intent(lower):
             intent = "check_balance"
+        elif self._is_last_transfer_intent(lower):
+            intent = "last_transfer"
 
         email_match = re.search(r"([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})", text)
         if email_match:
@@ -298,14 +322,16 @@ class PydanticPaymentAgentService:
         )
         if amount_match:
             try:
-                amount = Decimal(amount_match.group(1))
+                amount = float(amount_match.group(1))
             except Exception:
                 amount = None
 
         if not receiver_hint:
             to_match = re.search(r"\bto\s+([^\s,!?;:]+)", text, flags=re.IGNORECASE)
             if to_match:
-                receiver_hint = self._sanitize_receiver_hint(to_match.group(1))
+                candidate = self._sanitize_receiver_hint(to_match.group(1))
+                if candidate not in {"send", "pay", "transfer", "give", "move", "money", "payment"}:
+                    receiver_hint = candidate
 
         note_match = re.search(r"\bnote\s*[:\-]\s*(.+)$", text, flags=re.IGNORECASE)
         if note_match:
@@ -366,6 +392,19 @@ class PydanticPaymentAgentService:
             "funds left",
             "wallet amount",
             "account balance",
+        }
+        return any(token in lower_message for token in keywords)
+
+    @staticmethod
+    def _is_last_transfer_intent(lower_message: str) -> bool:
+        keywords = {
+            "last transfer",
+            "previous transfer",
+            "last payment",
+            "what was the money you sent",
+            "how much did i send",
+            "what did i just send",
+            "show last transaction",
         }
         return any(token in lower_message for token in keywords)
 

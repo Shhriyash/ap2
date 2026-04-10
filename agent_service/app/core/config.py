@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     agent_port: int = 8000
     agent_debug: bool = True
 
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_slot_model: str = "openai/gpt-oss-120b"
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-4.1-mini"
     openrouter_slot_model: str = "openai/gpt-4.1-mini"
