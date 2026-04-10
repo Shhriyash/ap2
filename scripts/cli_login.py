@@ -171,10 +171,10 @@ def _run_chat_loop(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Single CLI script: login with email+PIN, then run interactive agent loop.")
+    parser = argparse.ArgumentParser(description="Single CLI script: login with email+password, then run interactive agent loop.")
     parser.add_argument("--agent-url", default="http://localhost:8000", help="Agent base URL")
     parser.add_argument("--email", help="Registered email")
-    parser.add_argument("--pin", help="PIN set during onboarding")
+    parser.add_argument("--password", help="Password set during signup")
     parser.add_argument(
         "--preferred-auth",
         choices=["pin", "otp"],
@@ -194,12 +194,12 @@ def main() -> None:
     args = parser.parse_args()
 
     email = args.email or input("Email: ").strip()
-    pin = args.pin or getpass.getpass("PIN: ")
+    password = args.password or getpass.getpass("Password: ")
 
     try:
         data = _post_json(
             f"{args.agent_url.rstrip('/')}/auth/cli/login",
-            {"email": email, "pin": pin},
+            {"email": email, "password": password},
         )
     except RuntimeError as exc:
         print(f"Login failed: {exc}")

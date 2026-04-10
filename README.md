@@ -142,6 +142,18 @@ This creates:
 
 This seeds users, accounts, and verified beneficiaries for local transfer tests.
 
+Standalone Supabase initializer (schema + seed, from any working directory):
+
+```powershell
+.\.venv-gateway\Scripts\python.exe .\gateway_service\scripts\init_supabase_dummy_db.py --reset
+```
+
+Optional: set every active user AED balance to 5000 after seeding:
+
+```powershell
+.\.venv-gateway\Scripts\python.exe .\gateway_service\scripts\init_supabase_dummy_db.py --reset --set-all-balance --balance-amount 5000
+```
+
 ### 6) Start services
 
 Terminal 1:
@@ -213,6 +225,7 @@ Expected response contains `status: ok` for both services.
 ## Notes
 
 - Currency is fixed to `AED`.
+- New signups/provisioned users get default `500.00 AED` opening balance.
 - Receiver is verified by email against active users, then sender confirms before transfer.
 - Receiver confirmation is required before payment execution.
 - Agent logs are written to `agent_service/logs/agent.log`.

@@ -17,6 +17,11 @@ class UserPinLoginRequest(BaseModel):
     pin: str = Field(..., min_length=4, max_length=8)
 
 
+class UserPasswordLoginRequest(BaseModel):
+    email: str = Field(..., min_length=3)
+    password: str = Field(..., min_length=6, max_length=120)
+
+
 class UserPinVerifyRequest(BaseModel):
     internal_user_id: str = Field(..., min_length=3)
     pin: str = Field(..., min_length=4, max_length=8)

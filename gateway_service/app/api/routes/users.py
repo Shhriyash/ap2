@@ -7,6 +7,7 @@ from app.services.user_service import UserService
 from shared_lib.contracts.user import (
     UserIdentityResponse,
     UserLoginResolveRequest,
+    UserPasswordLoginRequest,
     UserPinLoginRequest,
     UserPinVerifyRequest,
     UserPinVerifyResponse,
@@ -57,6 +58,20 @@ def login_with_pin(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or PIN.")
+    return user
+
+
+@router.post("/users/login-password", response_model=UserIdentityResponse)
+def login_with_password(
+    payload: UserPasswordLoginRequest,
+    db: Session = Depends(get_db),
+) -> UserIdentityResponse:
+    try:
+        user = UserService(db).verify_password_login(payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
     return user
 
 

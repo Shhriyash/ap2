@@ -90,11 +90,25 @@ What gets installed:
 - `agent_service/requirements.txt` includes FastAPI, Uvicorn, pydantic-settings, httpx, `pydantic-ai-slim[openrouter,groq]`, and editable `shared_lib`.
 - `gateway_service/requirements.txt` includes FastAPI, Uvicorn, pydantic-settings, SQLAlchemy, psycopg, httpx, and editable `shared_lib`.
 
-## 5) Seed Prototype Data
+## 5) Initialize Prototype DB (Supabase)
 Run once after dependency setup:
 
 ```powershell
-.\.venv-gateway\Scripts\python.exe .\gateway_service\scripts\bootstrap_dummy_data.py --reset
+.\.venv-gateway\Scripts\python.exe .\gateway_service\scripts\init_supabase_dummy_db.py --reset
+```
+
+Optional: set all users to `5000 AED` after initialization:
+
+```powershell
+.\.venv-gateway\Scripts\python.exe .\gateway_service\scripts\init_supabase_dummy_db.py --reset --set-all-balance --balance-amount 5000
+```
+
+Notes:
+- New users created via signup/provisioning get default `500.00 AED`.
+- Existing helper script still works:
+
+```powershell
+.\.venv-gateway\Scripts\python.exe .\gateway_service\scripts\set_all_balances.py --amount 5000
 ```
 
 ## 6) Start Services
@@ -136,9 +150,10 @@ python .\scripts\cli_login.py --agent-url http://localhost:8000
 
 When prompted, enter:
 - `Email:` -> your registered user email
-- `PIN:` -> your onboarding PIN
+- `Password:` -> your signup password
 
 This writes `.agent_session.json` and starts interactive chat.
+PIN is used later only for payment confirmation/auth challenge.
 
 ## 9) Run Frontend (Landing + Signup + Agent Logs)
 In a new terminal:

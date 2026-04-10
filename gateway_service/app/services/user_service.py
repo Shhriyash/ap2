@@ -6,6 +6,7 @@ from app.db.repository import PaymentRepository
 from shared_lib.contracts.user import (
     UserIdentityResponse,
     UserLoginResolveRequest,
+    UserPasswordLoginRequest,
     UserPinLoginRequest,
     UserPinVerifyRequest,
     UserProvisionRequest,
@@ -55,6 +56,22 @@ class UserService:
         if not user.pin_hash:
             return None
         if user.pin_hash != self._hash_pin(user.id, payload.pin):
+            return None
+        return UserIdentityResponse(
+            internal_user_id=user.id,
+            supabase_user_id=user.supabase_user_id or "",
+            email=user.email,
+            full_name=user.full_name,
+            status=user.status,
+        )
+
+    def verify_password_login(self, payload: UserPasswordLoginRequest) -> UserIdentityResponse | None:
+        user = self.repo.get_user_by_email(payload.email)
+        if not user or user.status != "active":
+            return None
+        if not user.password_hash:
+            return None
+        if user.password_hash != self._hash_password(user.id, payload.password):
             return None
         return UserIdentityResponse(
             internal_user_id=user.id,

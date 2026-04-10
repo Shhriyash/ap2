@@ -36,7 +36,7 @@ def _get_principal(credentials: HTTPAuthorizationCredentials = Depends(security)
 @router.post("/auth/cli/login", response_model=CliLoginResponse)
 async def cli_login(payload: CliLoginRequest) -> CliLoginResponse:
     try:
-        principal = await auth_service.cli_login(email=payload.email, pin=payload.pin)
+        principal = await auth_service.cli_login(email=payload.email, password=payload.password)
     except PermissionError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RuntimeError as exc:

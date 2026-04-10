@@ -23,6 +23,7 @@ from shared_lib.contracts.payment import (
 from shared_lib.contracts.user import (
     UserIdentityResponse,
     UserLoginResolveRequest,
+    UserPasswordLoginRequest,
     UserPinLoginRequest,
     UserPinVerifyRequest,
     UserPinVerifyResponse,
@@ -51,6 +52,7 @@ __all__ = [
     "VerifyReceiverResponse",
     "UserIdentityResponse",
     "UserLoginResolveRequest",
+    "UserPasswordLoginRequest",
     "UserPinLoginRequest",
     "UserPinVerifyRequest",
     "UserPinVerifyResponse",

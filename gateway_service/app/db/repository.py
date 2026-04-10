@@ -75,7 +75,7 @@ class PaymentRepository:
             id=uuid.uuid4(),
             user_id=user_id,
             currency=currency,
-            available_balance=Decimal("0.00"),
+            available_balance=Decimal("500.00"),
             held_balance=Decimal("0.00"),
             status="active",
         )
