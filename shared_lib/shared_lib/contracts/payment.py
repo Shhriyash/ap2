@@ -78,3 +78,27 @@ class VerifyReceiverResponse(BaseModel):
     display_name: str | None = None
     masked_identifier: str | None = None
     verification_status: Literal["verified", "unverified", "not_found"] = "not_found"
+
+
+class BeneficiaryItem(BaseModel):
+    beneficiary_id: str
+    display_name: str
+    masked_identifier: str
+    is_verified: bool
+
+
+class BeneficiaryListResponse(BaseModel):
+    beneficiaries: list[BeneficiaryItem]
+
+
+class AddBeneficiaryRequest(BaseModel):
+    owner_user_id: str
+    display_name: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=3)
+
+
+class AddBeneficiaryResponse(BaseModel):
+    beneficiary_id: str
+    display_name: str
+    masked_identifier: str
+    status: Literal["added", "already_exists", "not_found"]

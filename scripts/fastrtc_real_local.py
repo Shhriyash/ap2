@@ -39,7 +39,7 @@ class RealFastRTCVoiceAssistant:
         self.groq_client = Groq(api_key=api_key)
 
         deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
-        self.deepgram_client = DeepgramClient(deepgram_api_key) if deepgram_api_key else None
+        self.deepgram_client = DeepgramClient(api_key=deepgram_api_key) if deepgram_api_key else None
 
         self.stt_model = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo")
         self.tts_debug = os.getenv("TTS_DEBUG") == "1"
@@ -148,27 +148,48 @@ class RealFastRTCVoiceAssistant:
             return None
 
     def play_audio(self, audio_path: Path) -> bool:
-        try:
-            if os.name == "nt" and audio_path.suffix.lower() == ".wav":
-                import winsound
+        import threading
 
-                winsound.PlaySound(str(audio_path), winsound.SND_FILENAME)
-            else:
-                from pydub import AudioSegment
-                from pydub.playback import play
-
-                audio = AudioSegment.from_file(str(audio_path))
-                play(audio)
-            return True
-        except Exception as exc:  # pragma: no cover - playback stack differs by machine
-            print(f"Playback error: {exc}")
-            return False
-        finally:
+        def _play_and_delete(path: Path) -> None:
             try:
-                if audio_path.exists():
-                    audio_path.unlink()
-            except Exception:
-                pass
+                if os.name == "nt":
+                    played = False
+                    if path.suffix.lower() == ".wav":
+                        try:
+                            import winsound
+                            winsound.PlaySound(str(path), winsound.SND_FILENAME)
+                            played = True
+                        except Exception as exc:
+                            print(f"winsound error: {exc}, trying PowerShell fallback...")
+                    if not played:
+                        import subprocess
+                        subprocess.run(
+                            ["powershell", "-NoProfile", "-c",
+                             f'(New-Object Media.SoundPlayer "{str(path)}").PlaySync()'],
+                            check=False,
+                            capture_output=True,
+                        )
+                else:
+                    from pydub import AudioSegment
+                    from pydub.playback import play
+                    audio = AudioSegment.from_file(str(path))
+                    play(audio)
+            except Exception as exc:  # pragma: no cover
+                print(f"Playback error: {exc}")
+            finally:
+                try:
+                    if path.exists():
+                        path.unlink()
+                except Exception:
+                    pass
+
+        try:
+            t = threading.Thread(target=_play_and_delete, args=(audio_path,), daemon=True)
+            t.start()
+            return True
+        except Exception as exc:  # pragma: no cover
+            print(f"Playback launch error: {exc}")
+            return False
 
     def response(self, audio: Tuple[int, np.ndarray]) -> Generator[Tuple[int, np.ndarray], None, None]:
         sample_rate, audio_array = audio

@@ -34,10 +34,11 @@ class PaymentExecutionDeps:
 
 
 class IntentSlots(BaseModel):
-    intent: Literal["send_money", "check_balance", "last_transfer", "unknown"]
+    intent: Literal["send_money", "check_balance", "last_transfer", "add_beneficiary", "unknown"]
     amount: float | None = None
-    receiver_hint: str | None = None
+    receiver_name: str | None = None
     beneficiary_id: str | None = None
+    beneficiary_email: str | None = None
     target_user_id: str | None = None
     target_user_name: str | None = None
     purpose: str = ""
@@ -68,6 +69,7 @@ class PydanticPaymentAgentService:
         self._tool_router = PaymentToolRouter()
         self._slot_agent: Agent[SlotExtractionDeps, IntentSlots] | None = None
         self._execution_agent: Agent[PaymentExecutionDeps, ExecutionResult] | None = None
+        self._conv_agent: Agent[None, str] | None = None
         self._slot_histories: dict[str, list[ModelMessage]] = {}
         self._slot_history_max_messages = 20
 
@@ -75,7 +77,7 @@ class PydanticPaymentAgentService:
             # Provider SDKs resolve keys from environment.
             if settings.groq_api_key and not os.getenv("GROQ_API_KEY"):
                 os.environ["GROQ_API_KEY"] = settings.groq_api_key
-            if not os.getenv("OPENROUTER_API_KEY"):
+            if settings.openrouter_api_key and not os.getenv("OPENROUTER_API_KEY"):
                 os.environ["OPENROUTER_API_KEY"] = settings.openrouter_api_key
 
             instructions = _load_prompt_instructions()
@@ -108,6 +110,18 @@ class PydanticPaymentAgentService:
             )
             self._register_execution_tools()
 
+            self._conv_agent = Agent(
+                model=slot_model,
+                output_type=str,
+                instructions=(
+                    "You are a friendly payment assistant for a mobile payment app. "
+                    "Respond naturally and briefly (1-2 sentences) to the user's message. "
+                    "You can transfer money, check balances, and review recent transfers. "
+                    "Do not perform any actual transactions here — just respond conversationally."
+                ),
+                model_settings=ModelSettings(max_tokens=100),
+            )
+
     def _build_model_with_rate_limit_fallback(self, groq_model_name: str, openrouter_model_name: str):
         groq_model = f"groq:{groq_model_name}" if settings.groq_api_key and groq_model_name else None
         openrouter_model = (
@@ -118,7 +132,7 @@ class PydanticPaymentAgentService:
             return FallbackModel(
                 groq_model,
                 openrouter_model,
-                fallback_on=self._fallback_on_groq_rate_limit,
+                fallback_on=self._fallback_on_rate_limit,
             )
         if groq_model:
             return groq_model
@@ -127,7 +141,7 @@ class PydanticPaymentAgentService:
         raise RuntimeError("No LLM provider configured. Set GROQ_API_KEY or OPENROUTER_API_KEY.")
 
     @staticmethod
-    def _fallback_on_groq_rate_limit(exc: Exception) -> bool:
+    def _fallback_on_rate_limit(exc: Exception) -> bool:
         if not isinstance(exc, ModelHTTPError):
             return False
         status_code = getattr(exc, "status_code", None)
@@ -155,7 +169,7 @@ class PydanticPaymentAgentService:
             payer_user_id: str,
             session_id: str,
             beneficiary_id: str,
-            amount: float,
+            amount: str,
             payment_method_id: str,
             purpose: str,
             auth_context_id: str,
@@ -165,7 +179,7 @@ class PydanticPaymentAgentService:
                 payer_user_id=payer_user_id,
                 session_id=session_id,
                 beneficiary_id=beneficiary_id,
-                amount=Decimal(str(amount)),
+                amount=Decimal(amount),
                 currency="AED",
                 payment_method_id=payment_method_id,
                 purpose=purpose,
@@ -206,7 +220,7 @@ class PydanticPaymentAgentService:
                 {
                     "intent": slots.intent,
                     "has_amount": slots.amount is not None,
-                    "has_receiver_hint": bool(slots.receiver_hint),
+                    "has_receiver_name": bool(slots.receiver_name),
                 },
             )
         except Exception as exc:
@@ -279,6 +293,23 @@ class PydanticPaymentAgentService:
             )
         )
 
+    async def add_beneficiary(self, owner_user_id: str, display_name: str, email: str):
+        return await self._tool_router.add_beneficiary(
+            owner_user_id=owner_user_id,
+            display_name=display_name,
+            email=email,
+        )
+
+    async def generate_response(self, message: str) -> str:
+        if not self._enabled or not self._conv_agent:
+            return "Hi. I can transfer money and check your balance. What do you need?"
+        try:
+            result = await self._conv_agent.run(message)
+            return result.output.strip() or "I can help with transfers and balance checks."
+        except Exception as exc:
+            log_event("conv_agent_error", {"error": str(exc)[:200]})
+            return "Hi. I can transfer money and check your balance. What do you need?"
+
     async def get_balance(self, requestor_user_id: str, target_user_id: str):
         return await self._tool_router.get_balance(requestor_user_id=requestor_user_id, target_user_id=target_user_id)
 
@@ -301,8 +332,8 @@ class PydanticPaymentAgentService:
         text = message.strip()
         lower = text.lower()
 
-        amount: Decimal | None = None
-        receiver_hint: str | None = None
+        amount: float | None = None
+        receiver_name: str | None = None
         purpose = ""
         intent: Literal["send_money", "check_balance", "unknown"] = "unknown"
 
@@ -310,10 +341,8 @@ class PydanticPaymentAgentService:
             intent = "check_balance"
         elif self._is_last_transfer_intent(lower):
             intent = "last_transfer"
-
-        email_match = re.search(r"([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})", text)
-        if email_match:
-            receiver_hint = self._sanitize_receiver_hint(email_match.group(1))
+        elif self._is_add_beneficiary_intent(lower):
+            intent = "add_beneficiary"
 
         amount_match = re.search(
             r"(?<!\w)(\d+(?:\.\d{1,2})?)\s*(?:aed|dhs?|dirham|dirhams)?\b",
@@ -326,29 +355,37 @@ class PydanticPaymentAgentService:
             except Exception:
                 amount = None
 
-        if not receiver_hint:
-            to_match = re.search(r"\bto\s+([^\s,!?;:]+)", text, flags=re.IGNORECASE)
-            if to_match:
-                candidate = self._sanitize_receiver_hint(to_match.group(1))
-                if candidate not in {"send", "pay", "transfer", "give", "move", "money", "payment"}:
-                    receiver_hint = candidate
+        to_match = re.search(r"\bto\s+([^\s,!?;:]+)", text, flags=re.IGNORECASE)
+        if to_match:
+            candidate = to_match.group(1).strip().strip(".,!?;:()[]{}<>\"'")
+            if candidate.lower() not in {"send", "pay", "transfer", "give", "move", "money", "payment"}:
+                receiver_name = candidate
 
         note_match = re.search(r"\bnote\s*[:\-]\s*(.+)$", text, flags=re.IGNORECASE)
         if note_match:
             purpose = note_match.group(1).strip()
 
-        if self._is_send_intent(lower) or receiver_hint or amount is not None:
+        if self._is_send_intent(lower) or (receiver_name and intent == "unknown") or amount is not None:
             intent = "send_money"
+
+        beneficiary_email: str | None = None
+        if intent == "add_beneficiary":
+            email_match = re.search(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", text)
+            if email_match:
+                beneficiary_email = email_match.group(0).strip().lower()
+            amount = None
+            purpose = ""
 
         if intent == "check_balance":
             amount = None
-            receiver_hint = None
+            receiver_name = None
             purpose = ""
 
         return IntentSlots(
             intent=intent,
             amount=amount,
-            receiver_hint=receiver_hint,
+            receiver_name=receiver_name,
+            beneficiary_email=beneficiary_email,
             purpose=purpose,
             payment_method_id=default_method_id,
         )
@@ -358,16 +395,12 @@ class PydanticPaymentAgentService:
         return (
             slots.intent == "unknown"
             and slots.amount is None
-            and not slots.receiver_hint
+            and not slots.receiver_name
             and not slots.beneficiary_id
             and not slots.target_user_id
             and not slots.target_user_name
             and not slots.purpose
         )
-
-    @staticmethod
-    def _sanitize_receiver_hint(value: str) -> str:
-        return value.strip().strip(".,!?;:()[]{}<>\"'").lower()
 
     @staticmethod
     def _is_send_intent(lower_message: str) -> bool:
@@ -392,6 +425,20 @@ class PydanticPaymentAgentService:
             "funds left",
             "wallet amount",
             "account balance",
+        }
+        return any(token in lower_message for token in keywords)
+
+    @staticmethod
+    def _is_add_beneficiary_intent(lower_message: str) -> bool:
+        keywords = {
+            "add contact",
+            "add beneficiary",
+            "add a contact",
+            "add a beneficiary",
+            "save contact",
+            "new contact",
+            "add payee",
+            "new payee",
         }
         return any(token in lower_message for token in keywords)
 

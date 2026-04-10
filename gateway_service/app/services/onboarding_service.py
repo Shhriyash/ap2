@@ -2,103 +2,82 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from threading import Lock
 
 from sqlalchemy.orm import Session
 
+from app.db.models import OnboardingSession, OtpChallenge
 from app.db.repository import PaymentRepository
 
 
-@dataclass
-class OnboardingSessionRecord:
-    user_id: str
-    token: str
-    expires_at: datetime
-
-
-@dataclass
-class OtpChallengeRecord:
-    user_id: str
-    challenge_id: str
-    code: str
-    expires_at: datetime
-    destination_masked: str
-    verified: bool = False
-
-
 class OnboardingStore:
-    def __init__(self) -> None:
-        self._sessions: dict[str, OnboardingSessionRecord] = {}
-        self._challenges: dict[str, OtpChallengeRecord] = {}
-        self._pins: dict[str, str] = {}
-        self._verified_users: set[str] = set()
-        self._lock = Lock()
+    """DB-backed onboarding state (sessions, OTP challenges, verification)."""
 
-    def create_session(self, user_id: str, ttl_minutes: int = 30) -> str:
+    def create_session(self, db: Session, user_id: str, ttl_minutes: int = 30) -> str:
         token = f"onb_{secrets.token_hex(16)}"
-        record = OnboardingSessionRecord(
-            user_id=user_id,
+        record = OnboardingSession(
             token=token,
+            user_id=user_id,
             expires_at=datetime.now(UTC) + timedelta(minutes=ttl_minutes),
         )
-        with self._lock:
-            self._sessions[token] = record
+        db.add(record)
+        db.flush()
         return token
 
-    def validate_session(self, token: str | None, user_id: str) -> bool:
+    def validate_session(self, db: Session, token: str | None, user_id: str) -> bool:
         if not token:
             return False
-        with self._lock:
-            record = self._sessions.get(token)
-            if not record:
-                return False
-            if record.expires_at <= datetime.now(UTC):
-                self._sessions.pop(token, None)
-                return False
-            return record.user_id == user_id
+        record = db.get(OnboardingSession, token)
+        if not record:
+            return False
+        if record.expires_at.replace(tzinfo=UTC) <= datetime.now(UTC):
+            db.delete(record)
+            db.flush()
+            return False
+        return record.user_id == user_id
 
-    def set_pin(self, user_id: str, pin: str) -> None:
-        digest = hashlib.sha256(f"prototype-pin::{user_id}::{pin}".encode("utf-8")).hexdigest()
-        with self._lock:
-            self._pins[user_id] = digest
-
-    def start_otp(self, user_id: str, destination: str) -> OtpChallengeRecord:
+    def start_otp(self, db: Session, user_id: str, destination: str) -> dict:
         challenge_id = f"chl_{secrets.token_hex(8)}"
         code = "000999"
-        destination_masked = _mask_destination(destination)
-        record = OtpChallengeRecord(
-            user_id=user_id,
+        masked = _mask_destination(destination)
+        record = OtpChallenge(
             challenge_id=challenge_id,
+            user_id=user_id,
             code=code,
-            expires_at=datetime.now(UTC) + timedelta(minutes=5),
-            destination_masked=destination_masked,
+            destination_masked=masked,
             verified=False,
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
         )
-        with self._lock:
-            self._challenges[challenge_id] = record
-        return record
+        db.add(record)
+        db.flush()
+        return {"challenge_id": challenge_id, "destination_masked": masked}
 
-    def verify_otp(self, user_id: str, challenge_id: str, submitted_code: str) -> bool:
-        with self._lock:
-            record = self._challenges.get(challenge_id)
-            if not record:
-                return False
-            if record.user_id != user_id:
-                return False
-            if record.expires_at <= datetime.now(UTC):
-                self._challenges.pop(challenge_id, None)
-                return False
-            if submitted_code != record.code:
-                return False
-            record.verified = True
-            self._verified_users.add(user_id)
-            return True
+    def verify_otp(self, db: Session, user_id: str, challenge_id: str, submitted_code: str) -> bool:
+        record = db.get(OtpChallenge, challenge_id)
+        if not record:
+            return False
+        if record.user_id != user_id:
+            return False
+        if record.expires_at.replace(tzinfo=UTC) <= datetime.now(UTC):
+            db.delete(record)
+            db.flush()
+            return False
+        if submitted_code != record.code:
+            return False
+        record.verified = True
+        db.flush()
+        return True
 
-    def is_verified(self, user_id: str) -> bool:
-        with self._lock:
-            return user_id in self._verified_users
+    def is_verified(self, db: Session, user_id: str) -> bool:
+        challenge = (
+            db.query(OtpChallenge)
+            .filter(OtpChallenge.user_id == user_id, OtpChallenge.verified.is_(True))
+            .first()
+        )
+        return challenge is not None
+
+
+onboarding_store = OnboardingStore()
 
 
 class OnboardingService:
@@ -122,7 +101,8 @@ class OnboardingService:
                 user_service.set_user_password(user_id=existing.id, password=password)
                 self.db.commit()
 
-            token = self.store.create_session(existing.id)
+            token = self.store.create_session(self.db, existing.id)
+            self.db.commit()
             return {
                 "user_id": existing.id,
                 "supabase_user_id": existing.supabase_user_id,
@@ -137,8 +117,8 @@ class OnboardingService:
         )
         self.repo.create_default_account(user.id)
         user_service.set_user_password(user_id=user.id, password=password)
+        token = self.store.create_session(self.db, user.id)
         self.db.commit()
-        token = self.store.create_session(user.id)
         return {
             "user_id": user.id,
             "supabase_user_id": user.supabase_user_id,
@@ -150,7 +130,8 @@ class OnboardingService:
         user = self.repo.get_user_by_id(user_id)
         if not user:
             raise LookupError("User not found.")
-        self.store.set_pin(user_id=user_id, pin=pin)
+        pin_digest = hashlib.sha256(f"prototype-pin::{user_id}::{pin}".encode("utf-8")).hexdigest()
+        # Store pin hash directly on user row — no in-memory state needed
         from app.services.user_service import UserService
 
         UserService(self.db).set_user_pin(user_id=user_id, pin=pin)
@@ -160,17 +141,16 @@ class OnboardingService:
         user = self.repo.get_user_by_id(user_id)
         if not user:
             raise LookupError("User not found.")
-        challenge = self.store.start_otp(user_id=user_id, destination=destination)
-        return {
-            "challenge_id": challenge.challenge_id,
-            "destination_masked": challenge.destination_masked,
-        }
+        data = self.store.start_otp(self.db, user_id=user_id, destination=destination)
+        self.db.commit()
+        return data
 
     def verify_otp(self, user_id: str, challenge_id: str, value: str) -> dict:
         user = self.repo.get_user_by_id(user_id)
         if not user:
             raise LookupError("User not found.")
-        verified = self.store.verify_otp(user_id=user_id, challenge_id=challenge_id, submitted_code=value)
+        verified = self.store.verify_otp(self.db, user_id=user_id, challenge_id=challenge_id, submitted_code=value)
+        self.db.commit()
         return {
             "verified": verified,
             "message": "OTP verified." if verified else "OTP verification failed.",
@@ -180,7 +160,7 @@ class OnboardingService:
         user = self.repo.get_user_by_id(user_id)
         if not user:
             raise LookupError("User not found.")
-        email_verified = self.store.is_verified(user_id)
+        email_verified = self.store.is_verified(self.db, user_id)
         return {
             "user_id": user.id,
             "email": user.email,
@@ -200,6 +180,3 @@ def _mask_destination(destination: str) -> str:
     if len(value) <= 4:
         return "*" * len(value)
     return value[:2] + "*" * (len(value) - 4) + value[-2:]
-
-
-onboarding_store = OnboardingStore()

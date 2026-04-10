@@ -9,8 +9,14 @@ from sqlalchemy.orm import Session
 from app.db.models import TransactionStatus
 from app.db.repository import PaymentRepository
 from app.providers.base import PaymentProvider
+import re
+
 from shared_lib.contracts.payment import (
+    AddBeneficiaryRequest,
+    AddBeneficiaryResponse,
     BalanceResponse,
+    BeneficiaryItem,
+    BeneficiaryListResponse,
     PaymentTransferRequest,
     PaymentTransferResponse,
     PaymentValidateRequest,
@@ -198,8 +204,25 @@ class DummyPaymentProvider(PaymentProvider):
         )
 
     def verify_receiver(self, payload: VerifyReceiverRequest) -> VerifyReceiverResponse:
-        receiver_email = payload.receiver_hint.strip().lower()
-        receiver_user = self.repo.get_user_by_email(receiver_email)
+        hint = payload.receiver_hint.strip()
+
+        # 1. Look up existing beneficiary by name, email, or id first.
+        existing = self.repo.get_beneficiary_by_hint(payload.sender_user_id, hint)
+        if existing:
+            verification_status = "verified" if existing.is_verified else "unverified"
+            return VerifyReceiverResponse(
+                found=True,
+                beneficiary_id=existing.id,
+                display_name=existing.display_name,
+                masked_identifier=self._mask_identifier(existing.identifier),
+                verification_status=verification_status,
+            )
+
+        # 2. If hint looks like an email, try to find the user and auto-create beneficiary.
+        if not self._is_email(hint):
+            return VerifyReceiverResponse(found=False, verification_status="not_found")
+
+        receiver_user = self.repo.get_user_by_email(hint.lower())
         if not receiver_user or receiver_user.status != "active":
             return VerifyReceiverResponse(found=False, verification_status="not_found")
 
@@ -209,7 +232,7 @@ class DummyPaymentProvider(PaymentProvider):
         beneficiary = self.repo.get_or_create_verified_beneficiary_for_user(
             owner_user_id=payload.sender_user_id,
             receiver_user_id=receiver_user.id,
-            receiver_email=receiver_email,
+            receiver_email=hint.lower(),
             display_name=receiver_user.full_name or (receiver_user.email or receiver_user.id),
         )
         self.db.commit()
@@ -221,6 +244,49 @@ class DummyPaymentProvider(PaymentProvider):
             display_name=beneficiary.display_name,
             masked_identifier=self._mask_identifier(beneficiary.identifier),
             verification_status=verification_status,
+        )
+
+    def add_beneficiary(self, payload: AddBeneficiaryRequest) -> AddBeneficiaryResponse:
+        email = payload.email.strip().lower()
+        receiver_user = self.repo.get_user_by_email(email)
+        if not receiver_user or receiver_user.status != "active":
+            return AddBeneficiaryResponse(
+                beneficiary_id="",
+                display_name=payload.display_name,
+                masked_identifier=self._mask_identifier(email),
+                status="not_found",
+            )
+
+        existing = self.repo.get_beneficiary_by_hint(payload.owner_user_id, email)
+        status = "already_exists" if existing else "added"
+
+        beneficiary = self.repo.get_or_create_verified_beneficiary_for_user(
+            owner_user_id=payload.owner_user_id,
+            receiver_user_id=receiver_user.id,
+            receiver_email=email,
+            display_name=payload.display_name,
+        )
+        self.db.commit()
+
+        return AddBeneficiaryResponse(
+            beneficiary_id=beneficiary.id,
+            display_name=beneficiary.display_name,
+            masked_identifier=self._mask_identifier(beneficiary.identifier),
+            status=status,
+        )
+
+    def list_beneficiaries(self, owner_user_id: str) -> BeneficiaryListResponse:
+        rows = self.repo.get_beneficiaries_for_user(owner_user_id)
+        return BeneficiaryListResponse(
+            beneficiaries=[
+                BeneficiaryItem(
+                    beneficiary_id=row.id,
+                    display_name=row.display_name,
+                    masked_identifier=self._mask_identifier(row.identifier),
+                    is_verified=row.is_verified,
+                )
+                for row in rows
+            ]
         )
 
     def refund(self, payload: RefundRequest) -> PaymentTransferResponse:
@@ -262,6 +328,10 @@ class DummyPaymentProvider(PaymentProvider):
             message="Reversal simulated.",
             timestamp=datetime.now(UTC).isoformat(),
         )
+
+    @staticmethod
+    def _is_email(hint: str) -> bool:
+        return bool(re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", hint.strip()))
 
     @staticmethod
     def _mask_identifier(identifier: str) -> str:

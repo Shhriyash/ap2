@@ -96,6 +96,14 @@ class PaymentRepository:
         )
         return self.db.scalar(stmt)
 
+    def get_beneficiaries_for_user(self, owner_user_id: str) -> list[Beneficiary]:
+        stmt = select(Beneficiary).where(
+            Beneficiary.owner_user_id == owner_user_id,
+            Beneficiary.is_verified.is_(True),
+            Beneficiary.status == "active",
+        )
+        return list(self.db.scalars(stmt).all())
+
     def get_beneficiary_by_hint(self, owner_user_id: str, receiver_hint: str) -> Beneficiary | None:
         normalized = receiver_hint.strip().lower()
         stmt = select(Beneficiary).where(

@@ -1,0 +1,20 @@
+# Keep deployment minimal: ignore all top-level paths, then include only what Vercel needs.
+/*
+
+!/api
+!/gateway_service
+!/onboarding_dashboard
+!/shared_lib
+!/vercel.json
+!/requirements.txt
+!/.vercelignore
+
+# Optional runtime pin if present.
+!/.python-version
+
+# Exclude local artifacts inside included folders.
+**/__pycache__/**
+**/*.pyc
+**/*.pyo
+**/*.egg-info/**
+**/*.log

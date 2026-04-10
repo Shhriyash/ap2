@@ -3,7 +3,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from shared_lib.contracts.payment import (
+    AddBeneficiaryRequest,
+    AddBeneficiaryResponse,
     BalanceResponse,
+    BeneficiaryListResponse,
     PaymentTransferRequest,
     PaymentTransferResponse,
     PaymentValidateRequest,
@@ -31,6 +34,12 @@ class PaymentProvider(ABC):
 
     @abstractmethod
     def verify_receiver(self, payload: VerifyReceiverRequest) -> VerifyReceiverResponse: ...
+
+    @abstractmethod
+    def list_beneficiaries(self, owner_user_id: str) -> BeneficiaryListResponse: ...
+
+    @abstractmethod
+    def add_beneficiary(self, payload: AddBeneficiaryRequest) -> AddBeneficiaryResponse: ...
 
     @abstractmethod
     def refund(self, payload: RefundRequest) -> PaymentTransferResponse: ...

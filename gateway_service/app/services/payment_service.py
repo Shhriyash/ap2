@@ -5,7 +5,10 @@ from app.db.repository import PaymentRepository
 from app.services.auth_context_store import auth_context_store
 from app.services.provider_factory import build_provider
 from shared_lib.contracts.payment import (
+    AddBeneficiaryRequest,
+    AddBeneficiaryResponse,
     BalanceResponse,
+    BeneficiaryListResponse,
     PaymentTransferRequest,
     PaymentTransferResponse,
     PaymentValidateRequest,
@@ -66,6 +69,12 @@ class PaymentService:
 
     def verify_receiver(self, payload: VerifyReceiverRequest) -> VerifyReceiverResponse:
         return self.provider.verify_receiver(payload)
+
+    def list_beneficiaries(self, owner_user_id: str) -> BeneficiaryListResponse:
+        return self.provider.list_beneficiaries(owner_user_id)
+
+    def add_beneficiary(self, payload: AddBeneficiaryRequest) -> AddBeneficiaryResponse:
+        return self.provider.add_beneficiary(payload)
 
     def refund(self, payload: RefundRequest) -> PaymentTransferResponse:
         return self.provider.refund(payload)

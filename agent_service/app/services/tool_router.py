@@ -7,6 +7,7 @@ import httpx
 from app.core.config import settings
 from app.core.request_context import get_correlation_id
 from shared_lib.contracts.auth_context import RegisterAuthContextRequest, RegisterAuthContextResponse
+from shared_lib.contracts.payment import AddBeneficiaryRequest, AddBeneficiaryResponse
 from shared_lib.contracts.payment import BalanceResponse
 from shared_lib.contracts.payment import PaymentTransferRequest, PaymentTransferResponse
 from shared_lib.contracts.payment import VerifyReceiverRequest, VerifyReceiverResponse
@@ -48,6 +49,18 @@ class PaymentToolRouter:
             currency=data["currency"],
             available_balance=Decimal(str(data["available_balance"])),
         )
+
+    async def add_beneficiary(self, owner_user_id: str, display_name: str, email: str) -> AddBeneficiaryResponse:
+        payload = AddBeneficiaryRequest(owner_user_id=owner_user_id, display_name=display_name, email=email)
+        async with httpx.AsyncClient(timeout=settings.gateway_timeout_seconds) as client:
+            resp = await client.post(
+                f"{settings.gateway_base_url}/accounts/{owner_user_id}/beneficiaries",
+                headers=self._internal_headers,
+                json=payload.model_dump(mode="json"),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        return AddBeneficiaryResponse(**data)
 
     async def verify_receiver(self, sender_user_id: str, receiver_hint: str) -> VerifyReceiverResponse:
         payload = VerifyReceiverRequest(sender_user_id=sender_user_id, receiver_hint=receiver_hint)

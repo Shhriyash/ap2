@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +14,16 @@ _logger = logging.getLogger("gateway_audit")
 def _configure() -> None:
     if _logger.handlers:
         return
-    logs_dir = Path("logs")
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    handler = logging.FileHandler(logs_dir / "gateway.log", encoding="utf-8")
+
+    # Serverless runtimes (e.g. Vercel) use a read-only project filesystem,
+    # so write logs to stdout there and to file for local development.
+    if os.getenv("VERCEL"):
+        handler = logging.StreamHandler()
+    else:
+        logs_dir = Path("logs")
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(logs_dir / "gateway.log", encoding="utf-8")
+
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
     handler.setFormatter(formatter)
     _logger.addHandler(handler)

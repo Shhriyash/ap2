@@ -1,0 +1,31 @@
+{
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "onboarding_dashboard/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "rewrites": [
+    { "source": "/onboarding/(.*)", "destination": "/api/index.py" },
+    { "source": "/health", "destination": "/api/index.py" },
+    { "source": "/", "destination": "/onboarding_dashboard/index.html" },
+    { "source": "/signup", "destination": "/onboarding_dashboard/signup.html" },
+    { "source": "/agent-logs", "destination": "/onboarding_dashboard/agent-logs.html" },
+    { "source": "/(.*)", "destination": "/onboarding_dashboard/$1" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+      ]
+    }
+  ]
+}

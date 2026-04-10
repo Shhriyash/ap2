@@ -55,3 +55,16 @@ Open:
 - `http://localhost:5173`
 
 Then set backend base URL in the dashboard UI (default: `http://localhost:8100`).
+
+## Deploy On Vercel
+This repository already includes `vercel.json` with frontend rewrites and API routing.
+
+After deployment:
+- Landing page: `/`
+- Signup page: `/signup`
+- Agent logs page: `/agent-logs`
+
+Runtime config is controlled in `onboarding_dashboard/config.js`:
+- `API_BASE: ""` means same-origin API calls (works with Vercel rewrite to `/api/index.py`).
+- `AGENT_API_BASE` must point to a deployed `agent_service` URL if you want live logs.
+- If `AGENT_API_BASE` is left empty, the logs page is intentionally disabled in production.

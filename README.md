@@ -221,6 +221,17 @@ Invoke-RestMethod http://localhost:8000/health
 
 Expected response contains `status: ok` for both services.
 
+### 10) Run frontend (landing + signup + agent logs)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_frontend.ps1
+```
+
+When this script starts, it prints the frontend URLs in terminal, including:
+- `http://localhost:5173/index.html`
+- `http://localhost:5173/signup.html`
+- `http://localhost:5173/agent-logs.html`
+
 ## API Surface
 
 - Agent (`http://localhost:8000`)

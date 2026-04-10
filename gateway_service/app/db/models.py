@@ -92,6 +92,23 @@ class Transaction(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class OnboardingSession(Base):
+    __tablename__ = "onboarding_sessions"
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class OtpChallenge(Base):
+    __tablename__ = "otp_challenges"
+    challenge_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    code: Mapped[str] = mapped_column(String(10))
+    destination_masked: Mapped[str] = mapped_column(String(200))
+    verified: Mapped[bool] = mapped_column(default=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class LedgerEntry(Base):
     __tablename__ = "ledger_entries"
     __table_args__ = (CheckConstraint("amount > 0", name="ck_ledger_amount_positive"),)

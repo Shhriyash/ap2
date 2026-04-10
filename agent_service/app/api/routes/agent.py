@@ -56,7 +56,7 @@ async def agent_message(
 ) -> AgentMessageResponse:
     if payload.session_id != principal.session_id:
         raise HTTPException(status_code=403, detail="Session id does not match authenticated principal.")
-    return await orchestrator.process_message(payload.session_id, principal.internal_user_id, payload.message)
+    return await orchestrator.process_message(payload.session_id, principal.internal_user_id, payload.message, payload.channel)
 
 
 @router.post("/auth/challenge/start")

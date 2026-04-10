@@ -77,7 +77,7 @@ def _build_agent_voice_assistant_class():
         def _send_agent_message(self, message: str) -> dict:
             return _post_json(
                 f"{self.agent_url}/agent/message",
-                {"session_id": self.session_id, "message": message},
+                {"session_id": self.session_id, "message": message, "channel": "voice"},
                 headers=self.auth_headers,
             )
 

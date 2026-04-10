@@ -1,4 +1,6 @@
-const AGENT_API_BASE = "http://localhost:8000";
+const AGENT_API_BASE = String(window.__APP_CONFIG__?.AGENT_API_BASE ?? "")
+  .trim()
+  .replace(/\/+$/, "");
 
 const elements = {
   logsForm: document.getElementById("logs-form"),
@@ -94,6 +96,16 @@ const bindRevealAnimations = () => {
 };
 
 const init = () => {
+  if (!AGENT_API_BASE) {
+    elements.startBtn.disabled = true;
+    setStatus(
+      "warn",
+      "Live logs are disabled until AGENT_API_BASE is configured in config.js."
+    );
+    bindRevealAnimations();
+    return;
+  }
+
   elements.logsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 

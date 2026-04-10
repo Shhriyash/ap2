@@ -34,6 +34,9 @@ class SessionState:
     auth_verified: bool = False
     auth_context_id: str | None = None
     ready_to_execute: bool = False
+    add_contact_name: str | None = None
+    add_contact_email: str | None = None
+    awaiting_add_contact_confirm: bool = False
     last_transfer_amount: Decimal | None = None
     last_transfer_currency: str | None = None
     last_transfer_receiver: str | None = None
@@ -58,6 +61,9 @@ class SessionState:
             "auth_verified": self.auth_verified,
             "auth_context_id": self.auth_context_id,
             "ready_to_execute": self.ready_to_execute,
+            "add_contact_name": self.add_contact_name,
+            "add_contact_email": self.add_contact_email,
+            "awaiting_add_contact_confirm": self.awaiting_add_contact_confirm,
             "last_transfer_amount": str(self.last_transfer_amount) if self.last_transfer_amount is not None else None,
             "last_transfer_currency": self.last_transfer_currency,
             "last_transfer_receiver": self.last_transfer_receiver,
@@ -75,20 +81,71 @@ class AgentOrchestrator:
         self._sessions: dict[str, SessionState] = {}
         self._auth_challenges: dict[str, dict[str, Any]] = {}
 
-    async def process_message(self, session_id: str, user_id: str, message: str) -> AgentMessageResponse:
+    async def process_message(self, session_id: str, user_id: str, message: str, channel: str = "text") -> AgentMessageResponse:
         log_event("agent_message_received", {"session_id": session_id, "user_id": user_id, "message": message})
         state = self._sessions.setdefault(session_id, SessionState(user_id=user_id))
         lower = message.strip().lower()
 
         if self._is_abort_command(lower):
             self._reset_payment_state(state)
+            self._clear_add_contact(state)
             log_event("transaction_aborted", {"session_id": session_id, "user_id": user_id})
             return AgentMessageResponse(
                 session_id=session_id,
-                response="Transaction aborted. No money was sent.",
+                response="Cancelled.",
                 next_action="failed",
                 state=state.to_dict(),
             )
+
+        if state.awaiting_add_contact_confirm:
+            if self._is_yes(lower):
+                try:
+                    result = await self._agent.add_beneficiary(
+                        owner_user_id=user_id,
+                        display_name=state.add_contact_name or "",
+                        email=state.add_contact_email or "",
+                    )
+                    self._clear_add_contact(state)
+                    if result.status == "not_found":
+                        log_event("add_contact_not_found", {"session_id": session_id, "user_id": user_id})
+                        return AgentMessageResponse(
+                            session_id=session_id,
+                            response=f"Couldn't find anyone with that email. Check the address and try again.",
+                            next_action="ask_slot",
+                            state=state.to_dict(),
+                        )
+                    verb = "updated" if result.status == "already_exists" else "added"
+                    log_event("contact_added", {"session_id": session_id, "user_id": user_id, "beneficiary_id": result.beneficiary_id})
+                    return AgentMessageResponse(
+                        session_id=session_id,
+                        response=f"Done. {result.display_name} ({result.masked_identifier}) has been {verb} to your contacts.",
+                        next_action="ask_slot",
+                        state=state.to_dict(),
+                    )
+                except Exception as exc:
+                    log_event("add_contact_error", {"session_id": session_id, "error": str(exc)[:200]})
+                    self._clear_add_contact(state)
+                    return AgentMessageResponse(
+                        session_id=session_id,
+                        response="Something went wrong adding the contact. Please try again.",
+                        next_action="failed",
+                        state=state.to_dict(),
+                    )
+            elif self._is_no(lower):
+                self._clear_add_contact(state)
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response="Okay, contact not saved.",
+                    next_action="ask_slot",
+                    state=state.to_dict(),
+                )
+            else:
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response=f"Add {state.add_contact_name} ({state.add_contact_email}) as a contact? Please say yes or no.",
+                    next_action="ask_slot",
+                    state=state.to_dict(),
+                )
 
         if state.awaiting_receiver_confirmation:
             if self._is_yes(lower):
@@ -102,7 +159,7 @@ class AgentOrchestrator:
                 self._clear_receiver(state)
                 return AgentMessageResponse(
                     session_id=session_id,
-                    response="No problem. Share the receiver email and I will verify it again.",
+                    response="No problem. Who do you want to send to?",
                     next_action="ask_slot",
                     state=state.to_dict(),
                 )
@@ -119,13 +176,10 @@ class AgentOrchestrator:
             state.awaiting_note = False
             state.note_collected = True
 
-        if self._is_receivers_help_query(lower) and not self._contains_amount_or_email(message):
+        if self._is_receivers_help_query(lower) and not self._contains_amount_or_name(message):
             return AgentMessageResponse(
                 session_id=session_id,
-                response=(
-                    "You can send to any active registered user by email. "
-                    "Share receiver email and amount, for example: send 50 AED to friend@example.com."
-                ),
+                response="You can pay any of your saved contacts by name. Who do you want to send to?",
                 next_action="ask_slot",
                 state=state.to_dict(),
             )
@@ -209,12 +263,41 @@ class AgentOrchestrator:
                 state=state.to_dict(),
             )
 
+        if slots and slots.intent == "add_beneficiary":
+            if slots.receiver_name:
+                state.add_contact_name = slots.receiver_name
+            if slots.beneficiary_email:
+                state.add_contact_email = slots.beneficiary_email
+
+            if not state.add_contact_name:
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response="What name should I save this contact under?",
+                    next_action="ask_slot",
+                    state=state.to_dict(),
+                )
+            if not state.add_contact_email:
+                return AgentMessageResponse(
+                    session_id=session_id,
+                    response=f"What's {state.add_contact_name}'s email address?",
+                    next_action="ask_slot",
+                    state=state.to_dict(),
+                )
+
+            state.awaiting_add_contact_confirm = True
+            return AgentMessageResponse(
+                session_id=session_id,
+                response=f"Add {state.add_contact_name} ({state.add_contact_email}) as a contact? (yes/no)",
+                next_action="ask_slot",
+                state=state.to_dict(),
+            )
+
         if (
             not state.receiver_confirmed
             and slots
             and slots.intent != "send_money"
             and slots.amount is None
-            and not slots.receiver_hint
+            and not slots.receiver_name
             and not slots.beneficiary_id
             and state.amount is None
             and not state.beneficiary_name
@@ -223,41 +306,15 @@ class AgentOrchestrator:
             if self._is_receivers_help_query(lower):
                 return AgentMessageResponse(
                     session_id=session_id,
-                    response=(
-                        "You can send to any active registered user by email. "
-                        "Tell me receiver email and amount, for example: send 50 AED to friend@example.com."
-                    ),
+                    response="You can pay any of your saved contacts by name. Tell me who and how much.",
                     next_action="ask_slot",
                     state=state.to_dict(),
                 )
 
-            if self._is_greeting(lower) or self._is_small_talk(lower):
-                return AgentMessageResponse(
-                    session_id=session_id,
-                    response=(
-                        "Hi. I can help with money transfer and balance checks. "
-                        "Example: send 50 AED to friend@example.com."
-                    ),
-                    next_action="ask_slot",
-                    state=state.to_dict(),
-                )
-
-            if self._is_help_request(lower):
-                return AgentMessageResponse(
-                    session_id=session_id,
-                    response=(
-                        "I can send money, check your balance, and cancel a pending payment. "
-                        "Example: send 120 AED to friend@example.com."
-                    ),
-                    next_action="ask_slot",
-                    state=state.to_dict(),
-                )
-
+            response_text = await self._agent.generate_response(message)
             return AgentMessageResponse(
                 session_id=session_id,
-                response=(
-                    "I can help with transfer or balance. Try: send 50 AED to friend@example.com."
-                ),
+                response=response_text,
                 next_action="ask_slot",
                 state=state.to_dict(),
             )
@@ -268,8 +325,8 @@ class AgentOrchestrator:
                     state.amount = Decimal(str(slots.amount))
                 except Exception:
                     state.amount = state.amount
-            if slots.receiver_hint:
-                state.beneficiary_name = slots.receiver_hint
+            if slots.receiver_name:
+                state.beneficiary_name = slots.receiver_name
             if slots.beneficiary_id:
                 state.beneficiary_id = slots.beneficiary_id
             if slots.payment_method_id:
@@ -284,27 +341,12 @@ class AgentOrchestrator:
         if not state.receiver_confirmed:
             receiver_hint = state.beneficiary_name or state.beneficiary_id
             if not receiver_hint:
-                amount_hint = ""
+                ask = "Who do you want to send to?" if channel == "voice" else "Who should I send to? Please provide their name."
                 if state.amount is None:
-                    amount_hint = " and the amount in AED"
+                    ask += " And how much (in AED)?"
                 return AgentMessageResponse(
                     session_id=session_id,
-                    response=(
-                        "Sure, I can do that. Please share the receiver email"
-                        f"{amount_hint}. Example: send 50 AED to name@example.com."
-                    ),
-                    next_action="ask_slot",
-                    state=state.to_dict(),
-                )
-
-            if not self._looks_like_email(receiver_hint):
-                self._clear_receiver(state)
-                return AgentMessageResponse(
-                    session_id=session_id,
-                    response=(
-                        "I can help with that. Please provide the receiver email in this format: "
-                        "name@example.com."
-                    ),
+                    response=ask,
                     next_action="ask_slot",
                     state=state.to_dict(),
                 )
@@ -314,7 +356,10 @@ class AgentOrchestrator:
                 self._clear_receiver(state)
                 return AgentMessageResponse(
                     session_id=session_id,
-                    response="I could not find an active user for that email. Please share another receiver email.",
+                    response=(
+                        f"I couldn't find anyone named \"{receiver_hint}\" in your contacts. "
+                        "Check the name or add them as a contact in the app first."
+                    ),
                     next_action="ask_slot",
                     state=state.to_dict(),
                 )
@@ -322,7 +367,7 @@ class AgentOrchestrator:
                 self._clear_receiver(state)
                 return AgentMessageResponse(
                     session_id=session_id,
-                    response="This receiver is not verified. Payment cannot proceed.",
+                    response="That contact is not verified. Payment cannot proceed.",
                     next_action="failed",
                     state=state.to_dict(),
                 )
@@ -343,8 +388,8 @@ class AgentOrchestrator:
             return AgentMessageResponse(
                 session_id=session_id,
                 response=(
-                    f"I found receiver {state.beneficiary_name} ({state.beneficiary_masked_identifier}). "
-                    "Is this the intended receiver? (yes/no)"
+                    f"Found {state.beneficiary_name} ({state.beneficiary_masked_identifier}). "
+                    "Is this the right person? (yes/no)"
                 ),
                 next_action="ask_slot",
                 state=state.to_dict(),
@@ -670,10 +715,8 @@ class AgentOrchestrator:
         )
 
     @staticmethod
-    def _contains_amount_or_email(message: str) -> bool:
-        if re.search(r"\b\d+(?:\.\d{1,2})?\b", message):
-            return True
-        return bool(re.search(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", message))
+    def _contains_amount_or_name(message: str) -> bool:
+        return bool(re.search(r"\b\d+(?:\.\d{1,2})?\b", message))
 
     @staticmethod
     def _clear_receiver(state: SessionState) -> None:
@@ -694,8 +737,10 @@ class AgentOrchestrator:
         self._clear_receiver(state)
 
     @staticmethod
-    def _looks_like_email(value: str) -> bool:
-        return bool(re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", value.strip()))
+    def _clear_add_contact(state: SessionState) -> None:
+        state.add_contact_name = None
+        state.add_contact_email = None
+        state.awaiting_add_contact_confirm = False
 
     @staticmethod
     def _normalize_note_input(raw_note: str) -> str:

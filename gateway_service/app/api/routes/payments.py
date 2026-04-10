@@ -5,7 +5,10 @@ from app.api.security import require_internal_service_token
 from app.db.session import get_db
 from app.services.payment_service import PaymentService
 from shared_lib.contracts.payment import (
+    AddBeneficiaryRequest,
+    AddBeneficiaryResponse,
     BalanceResponse,
+    BeneficiaryListResponse,
     PaymentTransferRequest,
     PaymentTransferResponse,
     PaymentValidateRequest,
@@ -58,6 +61,23 @@ def reverse_payment(
     db: Session = Depends(get_db),
 ) -> PaymentTransferResponse:
     return PaymentService(db).reverse(payload)
+
+
+@router.get("/accounts/{owner_user_id}/beneficiaries", response_model=BeneficiaryListResponse)
+def list_beneficiaries(
+    owner_user_id: str,
+    db: Session = Depends(get_db),
+) -> BeneficiaryListResponse:
+    return PaymentService(db).list_beneficiaries(owner_user_id)
+
+
+@router.post("/accounts/{owner_user_id}/beneficiaries", response_model=AddBeneficiaryResponse)
+def add_beneficiary(
+    owner_user_id: str,
+    payload: AddBeneficiaryRequest,
+    db: Session = Depends(get_db),
+) -> AddBeneficiaryResponse:
+    return PaymentService(db).add_beneficiary(payload.model_copy(update={"owner_user_id": owner_user_id}))
 
 
 @router.get("/accounts/{target_user_id}/balance", response_model=BalanceResponse)

@@ -1,4 +1,5 @@
-const API_BASE = "http://localhost:8100";
+// Set by config.js; empty string = same-origin (Vercel), localhost for local dev
+const API_BASE = window.__APP_CONFIG__?.API_BASE ?? "http://localhost:8100";
 
 const state = {
   currentStep: 1,
@@ -54,7 +55,6 @@ const setMessage = (target, kind, text) => {
 
 const apiRequest = async (path, { method = "GET", payload } = {}) => {
   const base = cleanBaseUrl(API_BASE);
-  if (!base) throw new Error("Service configuration is unavailable.");
 
   const headers = {
     "Content-Type": "application/json",
@@ -423,12 +423,17 @@ const refreshFinalStatus = async () => {
         ? `${state.accountConnectionMethod === "card" ? "Debit card" : "Bank account"} linked (${state.accountConnectionLabel})`
         : "Not connected";
 
+    const esc = (s) => {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    };
     elements.finalSummary.innerHTML = `
       <strong>Signup complete.</strong><br/>
-      User: ${state.userId}<br/>
-      Email: ${state.email}<br/>
-      Verification: ${verificationState}<br/>
-      Account connection: ${accountLine}<br/>
+      User: ${esc(state.userId)}<br/>
+      Email: ${esc(state.email)}<br/>
+      Verification: ${esc(verificationState)}<br/>
+      Account connection: ${esc(accountLine)}<br/>
       Next: Continue to CLI authentication with this same email.
     `;
   } catch (error) {

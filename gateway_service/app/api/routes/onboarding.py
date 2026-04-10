@@ -56,8 +56,8 @@ class OnboardingStatusResponse(BaseModel):
     status: str
 
 
-def _require_onboarding_session(token: str | None, user_id: str) -> None:
-    if not onboarding_store.validate_session(token=token, user_id=user_id):
+def _require_onboarding_session(db: Session, token: str | None, user_id: str) -> None:
+    if not onboarding_store.validate_session(db=db, token=token, user_id=user_id):
         raise HTTPException(status_code=401, detail="Invalid or expired onboarding session token.")
 
 
@@ -87,7 +87,7 @@ def set_pin(
 ) -> dict[str, bool]:
     if not payload.pin.isdigit():
         raise HTTPException(status_code=422, detail="PIN must be numeric.")
-    _require_onboarding_session(x_onboarding_session_token, user_id)
+    _require_onboarding_session(db, x_onboarding_session_token, user_id)
     try:
         OnboardingService(db, onboarding_store).set_pin(user_id=user_id, pin=payload.pin)
     except LookupError as exc:
@@ -102,7 +102,7 @@ def start_otp(
     db: Session = Depends(get_db),
     x_onboarding_session_token: str | None = Header(default=None),
 ) -> OtpStartResponse:
-    _require_onboarding_session(x_onboarding_session_token, user_id)
+    _require_onboarding_session(db, x_onboarding_session_token, user_id)
     try:
         data = OnboardingService(db, onboarding_store).start_otp(user_id=user_id, destination=payload.destination)
     except LookupError as exc:
@@ -117,7 +117,7 @@ def verify_otp(
     db: Session = Depends(get_db),
     x_onboarding_session_token: str | None = Header(default=None),
 ) -> OtpVerifyResponse:
-    _require_onboarding_session(x_onboarding_session_token, user_id)
+    _require_onboarding_session(db, x_onboarding_session_token, user_id)
     submitted_value = payload.value or payload.otp
     if not submitted_value:
         raise HTTPException(status_code=422, detail="Missing OTP value.")
@@ -138,7 +138,7 @@ def onboarding_status(
     db: Session = Depends(get_db),
     x_onboarding_session_token: str | None = Header(default=None),
 ) -> OnboardingStatusResponse:
-    _require_onboarding_session(x_onboarding_session_token, user_id)
+    _require_onboarding_session(db, x_onboarding_session_token, user_id)
     try:
         data = OnboardingService(db, onboarding_store).status(user_id=user_id)
     except LookupError as exc:
